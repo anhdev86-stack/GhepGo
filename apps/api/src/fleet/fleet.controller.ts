@@ -34,7 +34,9 @@ export class FleetController {
 
   @Get('zones')
   publicZones() {
-    return this.fleet.listZones().then((zs) => zs.filter((z) => z.isActive).map(({ id, name, centerLat, centerLng, radiusKm }) => ({ id, name, centerLat, centerLng, radiusKm })));
+    return this.fleet
+      .listZones()
+      .then((zs) => zs.filter((z) => z.isActive).map(({ id, name, centerLat, centerLng, radiusKm, polygon, areaKm2 }) => ({ id, name, centerLat, centerLng, radiusKm, polygon, areaKm2 })));
   }
 
   // customer

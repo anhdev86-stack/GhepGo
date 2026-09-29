@@ -46,23 +46,48 @@ export class FleetService {
 
   // ---------------- zones ----------------
 
-  listZones() {
-    return this.prisma.serviceZone.findMany({
+  async listZones() {
+    const zones = await this.prisma.serviceZone.findMany({
       orderBy: { name: 'asc' },
       include: { _count: { select: { drivers: true, trips: true, groups: true } } },
     });
+    const polys = await this.zones.polygons(zones.map((z) => z.id));
+    return zones.map((z) => ({ ...z, polygon: polys.get(z.id)?.polygon ?? null, areaKm2: polys.get(z.id)?.areaKm2 ?? null }));
+  }
+
+  private async withPolygon(id: string) {
+    const z = await this.prisma.serviceZone.findUniqueOrThrow({ where: { id } });
+    const p = (await this.zones.polygons([id])).get(id);
+    return { ...z, polygon: p?.polygon ?? null, areaKm2: p?.areaKm2 ?? null };
   }
 
   async createZone(dto: CreateZoneDto) {
-    const z = await this.prisma.serviceZone.create({ data: dto });
+    const { polygon, ...rest } = dto;
+    if (!polygon && (rest.centerLat == null || rest.centerLng == null || rest.radiusKm == null)) {
+      throw new BadRequestException('Cần đa giác hoặc tâm + bán kính');
+    }
+    const z = await this.prisma.serviceZone.create({
+      data: { ...rest, centerLat: rest.centerLat ?? 0, centerLng: rest.centerLng ?? 0, radiusKm: rest.radiusKm ?? 1 },
+    });
+    if (polygon) {
+      try {
+        await this.zones.setPolygon(z.id, polygon);
+      } catch (err) {
+        await this.prisma.serviceZone.delete({ where: { id: z.id } });
+        throw err;
+      }
+    }
     this.zones.invalidate();
-    return z;
+    return this.withPolygon(z.id);
   }
 
   async updateZone(id: string, dto: UpdateZoneDto) {
-    const z = await this.prisma.serviceZone.update({ where: { id }, data: dto });
+    const { polygon, ...rest } = dto;
+    if (Object.keys(rest).length > 0) await this.prisma.serviceZone.update({ where: { id }, data: rest });
+    if (polygon === null) await this.zones.clearPolygon(id);
+    else if (polygon !== undefined) await this.zones.setPolygon(id, polygon);
     this.zones.invalidate();
-    return z;
+    return this.withPolygon(id);
   }
 
   async deleteZone(id: string) {
@@ -80,7 +105,7 @@ export class FleetService {
   /** Public: is this point served, and by which zone? */
   async coverage(lat: number, lng: number) {
     const zone = await this.zones.resolve(lat, lng);
-    const total = (await this.zones.activeZones()).length;
+    const total = await this.zones.activeZoneCount();
     return { served: total === 0 || this.zones.enforcement === 'off' || !!zone, zone, enforcement: this.zones.enforcement, zonesConfigured: total };
   }
 

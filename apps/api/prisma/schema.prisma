@@ -345,6 +345,8 @@ model ServiceZone {
   centerLat Float
   centerLng Float
   radiusKm  Float
+  /// Optional service polygon (WGS84). When set it replaces the circle for coverage checks.
+  geom      Unsupported("geography(Polygon, 4326)")?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
 

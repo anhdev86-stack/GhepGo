@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
+import { parsePolygonInput, PolygonPreview, ZonePolygonEditor } from "@/components/zone-polygon-editor";
 
 const vnd = (n: unknown) => Number(n).toLocaleString("vi-VN") + " đ";
 const W_LABEL: Record<string, string> = { REQUESTED: "Chờ duyệt", APPROVED: "Đã duyệt", PAID: "Đã chuyển", REJECTED: "Từ chối" };
@@ -19,7 +20,8 @@ export default function ReportsPage() {
   const [zones, setZones] = useState<any[]>([]);
   const [zoneStats, setZoneStats] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
-  const [zone, setZone] = useState({ name: "", centerLat: "10.7769", centerLng: "106.7009", radiusKm: "5" });
+  const [zone, setZone] = useState({ name: "", centerLat: "10.7769", centerLng: "106.7009", radiusKm: "5", polygonText: "" });
+  const [editingZone, setEditingZone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -167,9 +169,19 @@ export default function ReportsPage() {
           className="flex flex-wrap gap-2 mb-3"
           onSubmit={(e) => {
             e.preventDefault();
+            const parsed = parsePolygonInput(zone.polygonText);
+            if (parsed.error) {
+              setError(parsed.error);
+              return;
+            }
             run(async () => {
-              await api.createZone(token!, { name: zone.name, centerLat: Number(zone.centerLat), centerLng: Number(zone.centerLng), radiusKm: Number(zone.radiusKm) });
-              setZone({ ...zone, name: "" });
+              await api.createZone(token!, {
+                name: zone.name,
+                ...(parsed.ring
+                  ? { polygon: { type: "Polygon", coordinates: [parsed.ring] } }
+                  : { centerLat: Number(zone.centerLat), centerLng: Number(zone.centerLng), radiusKm: Number(zone.radiusKm) }),
+              });
+              setZone({ ...zone, name: "", polygonText: "" });
             });
           }}
         >
@@ -178,13 +190,28 @@ export default function ReportsPage() {
           <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Lng" value={zone.centerLng} onChange={(e) => setZone({ ...zone, centerLng: e.target.value })} />
           <input className="border rounded px-2 py-1 text-sm w-20" placeholder="Bán kính km" value={zone.radiusKm} onChange={(e) => setZone({ ...zone, radiusKm: e.target.value })} />
           <button className="bg-blue-600 text-white rounded px-3 py-1 text-sm">Thêm khu vực</button>
+          <div className="w-full flex gap-3 items-start">
+            <textarea
+              className="border rounded px-2 py-1 font-mono text-xs h-20 flex-1"
+              placeholder="Tuỳ chọn: đa giác (GeoJSON Polygon hoặc mỗi dòng 'lat, lng'). Có đa giác thì bỏ qua tâm/bán kính."
+              value={zone.polygonText}
+              onChange={(e) => setZone({ ...zone, polygonText: e.target.value })}
+            />
+            <PolygonPreview ring={parsePolygonInput(zone.polygonText).ring ?? null} size={80} />
+          </div>
         </form>
         <table className="w-full text-sm mb-3">
-          <thead><tr className="text-left text-slate-500"><th>Khu vực</th><th>Bán kính</th><th>Tài xế</th><th>Trạng thái</th><th></th></tr></thead>
+          <thead><tr className="text-left text-slate-500"><th>Khu vực</th><th>Hình dạng</th><th>Bán kính</th><th>Tài xế</th><th>Trạng thái</th><th></th></tr></thead>
           <tbody>
             {zones.map((z) => (
-              <tr key={z.id} className="border-t">
+              <Fragment key={z.id}>
+              <tr className="border-t">
                 <td className="py-1">{z.name}</td>
+                <td>
+                  <button className="underline text-blue-700" onClick={() => setEditingZone(editingZone === z.id ? null : z.id)}>
+                    {z.polygon ? `Đa giác · ${Number(z.areaKm2).toFixed(1)} km²` : "Hình tròn"} {editingZone === z.id ? "▲" : "▼"}
+                  </button>
+                </td>
                 <td>
                   <input
                     type="number"
@@ -206,10 +233,23 @@ export default function ReportsPage() {
                   <button className="text-red-600 underline" onClick={() => confirm(`Xoá khu vực ${z.name}?`) && run(() => api.deleteZone(token!, z.id))}>Xoá</button>
                 </td>
               </tr>
+              {editingZone === z.id && (
+                <tr className="bg-slate-50">
+                  <td colSpan={6} className="p-3">
+                    <ZonePolygonEditor
+                      initial={z.polygon?.coordinates?.[0] ?? null}
+                      onSave={(ring) => run(() => api.updateZone(token!, z.id, { polygon: { type: "Polygon", coordinates: [ring] } }))}
+                      onClear={() => run(() => api.updateZone(token!, z.id, { polygon: null }))}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
         <p className="text-xs text-slate-500 mb-3">
+          Khu vực có đa giác dùng đa giác (PostGIS), chưa có thì dùng hình tròn tâm + bán kính; điểm thuộc khu vực nhỏ nhất chứa nó.
           Điểm đón ngoài mọi khu vực đang hoạt động sẽ không đặt được xe; khách chỉ ghép chung nhóm trong cùng khu vực;
           tài xế đã gán khu vực chỉ thấy chuyến trong khu vực đó, tài xế chưa gán nhận mọi khu vực.
         </p>

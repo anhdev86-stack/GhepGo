@@ -105,7 +105,11 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 
 ### Khu vực hoạt động (`src/zones`, `src/fleet`)
 
-- Khu vực = hình tròn (tâm + bán kính km), bật/tắt được. Một điểm thuộc khu vực nhỏ nhất chứa nó.
+- Khu vực là **đa giác PostGIS** (`geom geography(Polygon,4326)`, index GIST) hoặc hình tròn (tâm + bán kính) khi chưa
+  vẽ đa giác; bật/tắt được. Điểm thuộc khu vực nhỏ nhất chứa nó, tính trong SQL bằng `ST_Covers` / `ST_DWithin`,
+  sắp theo `ST_Area`. Đa giác nhập dạng GeoJSON Polygon/Feature, vòng `[lng,lat]` hoặc cặp `[lat,lng]` (tự nhận dạng),
+  được PostGIS kiểm `ST_IsValid` (từ chối tự cắt), giới hạn 0,01–50.000 km²; lưu xong tâm/bán kính fallback đặt theo centroid.
+  Admin vẽ tại geojson.io rồi dán vào `/admin/reports` (có xem trước), hoặc gõ mỗi dòng một điểm `lat, lng`.
 - `ZONE_ENFORCEMENT=pickup` (mặc định): điểm đón phải nằm trong khu vực đang hoạt động, nếu không đặt xe bị từ chối
   ("ngoài vùng phục vụ"); `both` kiểm cả điểm trả; `off` chỉ dùng khu vực để gom/lọc. Chưa cấu hình khu vực nào thì
   không ràng buộc (dùng được ngay sau cài đặt).
@@ -273,6 +277,6 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
-- Khu vực dạng đa giác (PostGIS) thay hình tròn khi cần; SLA và phân công admin cho khiếu nại.
+- Vẽ khu vực trực tiếp trên bản đồ khi đã chọn Goong/Mapbox; SLA và phân công admin cho khiếu nại.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

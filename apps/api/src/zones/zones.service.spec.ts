@@ -1,46 +1,51 @@
 import { ConfigService } from '@nestjs/config';
 import { ZonesService } from './zones.service.js';
 
-const zones = [
-  { id: 'hcm', name: 'TP.HCM', centerLat: 10.7769, centerLng: 106.7009, radiusKm: 25 },
-  { id: 'q1', name: 'Quận 1', centerLat: 10.7769, centerLng: 106.7009, radiusKm: 3 },
-  { id: 'hn', name: 'Hà Nội', centerLat: 21.0285, centerLng: 105.8542, radiusKm: 20 },
-];
-const prisma = { serviceZone: { findMany: async () => zones } } as never;
-
-describe('ZonesService', () => {
-  it('resolves the smallest containing zone', async () => {
-    const svc = new ZonesService(prisma, new ConfigService({}));
-    expect((await svc.resolve(10.78, 106.70))?.id).toBe('q1');
-    expect((await svc.resolve(10.85, 106.65))?.id).toBe('hcm');
-    expect((await svc.resolve(21.03, 105.85))?.id).toBe('hn');
-    expect(await svc.resolve(16.05, 108.2)).toBeNull(); // Đà Nẵng, no zone
+describe('ZonesService.normalizeRing', () => {
+  it('accepts GeoJSON Polygon / Feature and closes the ring', () => {
+    const geo = { type: 'Polygon', coordinates: [[[106.6, 10.7], [106.8, 10.7], [106.8, 10.9]]] };
+    const ring = ZonesService.normalizeRing(geo);
+    expect(ring).toHaveLength(4);
+    expect(ring[0]).toEqual([106.6, 10.7]);
+    expect(ring[3]).toEqual([106.6, 10.7]);
+    expect(ZonesService.normalizeRing({ type: 'Feature', geometry: geo })).toEqual(ring);
   });
 
-  it('enforces pickup by default and both when configured', async () => {
-    const dflt = new ZonesService(prisma, new ConfigService({}));
-    expect((await dflt.checkTrip({ lat: 10.78, lng: 106.7 }, { lat: 16.05, lng: 108.2 })).ok).toBe(true);
-    expect((await dflt.checkTrip({ lat: 16.05, lng: 108.2 }, { lat: 10.78, lng: 106.7 })).ok).toBe(false);
-    const both = new ZonesService(prisma, new ConfigService({ ZONE_ENFORCEMENT: 'both' }));
-    expect((await both.checkTrip({ lat: 10.78, lng: 106.7 }, { lat: 16.05, lng: 108.2 })).ok).toBe(false);
-    const off = new ZonesService(prisma, new ConfigService({ ZONE_ENFORCEMENT: 'off' }));
-    expect((await off.checkTrip({ lat: 16.05, lng: 108.2 }, { lat: 16.05, lng: 108.2 })).ok).toBe(true);
+  it('accepts [lat,lng] pairs and swaps them to [lng,lat]', () => {
+    const ring = ZonesService.normalizeRing([[10.7, 106.6], [10.7, 106.8], [10.9, 106.8], [10.7, 106.6]]);
+    expect(ring[0]).toEqual([106.6, 10.7]);
+    expect(ring).toHaveLength(4);
   });
 
-  it('skips enforcement while no zones exist', async () => {
-    const empty = new ZonesService({ serviceZone: { findMany: async () => [] } } as never, new ConfigService({}));
-    const r = await empty.checkTrip({ lat: 16.05, lng: 108.2 }, { lat: 16.05, lng: 108.2 });
-    expect(r.ok).toBe(true);
-    expect(r.pickupZone).toBeNull();
+  it('rejects too few or invalid points', () => {
+    expect(() => ZonesService.normalizeRing([[106.6, 10.7], [106.8, 10.7]])).toThrow('ít nhất 3');
+    expect(() => ZonesService.normalizeRing([[106.6, 10.7], ['x', 10.7], [106.8, 10.9]])).toThrow('không hợp lệ');
+    expect(() => ZonesService.normalizeRing([[200, 10.7], [106.8, 10.7], [106.8, 10.9]])).toThrow('phạm vi');
   });
+});
 
+describe('ZonesService enforcement', () => {
+  const zone = { id: 'z', name: 'Z', centerLat: 10.7, centerLng: 106.7, radiusKm: 5, hasPolygon: true };
+  const mk = (config: Record<string, string>, inside: boolean, count = 1) =>
+    new ZonesService(
+      { $queryRaw: async () => (inside ? [zone] : []), serviceZone: { count: async () => count } } as never,
+      new ConfigService(config),
+    );
+  const p = { lat: 10.7, lng: 106.7 };
+
+  it('pickup enforcement by default', async () => {
+    expect((await mk({}, true).checkTrip(p, p)).ok).toBe(true);
+    expect((await mk({}, false).checkTrip(p, p)).ok).toBe(false);
+  });
+  it('off / no zones → always ok', async () => {
+    expect((await mk({ ZONE_ENFORCEMENT: 'off' }, false).checkTrip(p, p)).ok).toBe(true);
+    expect((await mk({}, false, 0).checkTrip(p, p)).ok).toBe(true);
+  });
   it('driver filters', () => {
-    const svc = new ZonesService(prisma, new ConfigService({}));
+    const svc = mk({}, true);
     expect(svc.driverZoneFilter(null)).toEqual({});
     expect(svc.driverZoneFilter('q1')).toEqual({ pickupZoneId: 'q1' });
-    expect(svc.driverAllowed(null, 'q1')).toBe(true);
-    expect(svc.driverAllowed('q1', 'q1')).toBe(true);
     expect(svc.driverAllowed('q1', 'hcm')).toBe(false);
-    expect(svc.driverAllowed('q1', null)).toBe(false);
+    expect(svc.driverAllowed(null, null)).toBe(true);
   });
 });

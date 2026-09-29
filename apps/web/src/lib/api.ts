@@ -191,13 +191,19 @@ export const api = {
       `/zones/coverage?lat=${lat}&lng=${lng}`,
       { token },
     ),
-  updateZone: (token: string, id: string, body: { name?: string; radiusKm?: number; isActive?: boolean; centerLat?: number; centerLng?: number }) =>
+  updateZone: (
+    token: string,
+    id: string,
+    body: { name?: string; radiusKm?: number; isActive?: boolean; centerLat?: number; centerLng?: number; polygon?: unknown },
+  ) =>
     request(`/admin/zones/${id}`, { method: "PATCH", token, body }),
   deleteZone: (token: string, id: string) => request(`/admin/zones/${id}`, { method: "DELETE", token }),
   zoneStats: (token: string, from?: string, to?: string) =>
     request<any>(`/admin/reports/zones?${from ? `from=${from}&` : ""}${to ? `to=${to}` : ""}`, { token }),
-  createZone: (token: string, body: { name: string; centerLat: number; centerLng: number; radiusKm: number }) =>
-    request("/admin/zones", { method: "POST", token, body }),
+  createZone: (
+    token: string,
+    body: { name: string; centerLat?: number; centerLng?: number; radiusKm?: number; polygon?: unknown },
+  ) => request("/admin/zones", { method: "POST", token, body }),
   assignZone: (token: string, driverId: string, zoneId: string | null) =>
     request(`/admin/drivers/${driverId}/zone`, { method: "PATCH", token, body: { zoneId } }),
 

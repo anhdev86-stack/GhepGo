@@ -3,10 +3,13 @@ import { IsBoolean, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsNumber, IsOpti
 
 export class CreateZoneDto {
   @IsString() @IsNotEmpty() @MaxLength(100) name: string;
-  @Type(() => Number) @IsLatitude() centerLat: number;
-  @Type(() => Number) @IsLongitude() centerLng: number;
-  @Type(() => Number) @IsNumber() @Min(0.5) @Max(200) radiusKm: number;
+  /** Circle fallback; may be omitted when a polygon is given (centroid is used). */
+  @IsOptional() @Type(() => Number) @IsLatitude() centerLat?: number;
+  @IsOptional() @Type(() => Number) @IsLongitude() centerLng?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.5) @Max(200) radiusKm?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
+  /** GeoJSON Polygon / Feature, a [lng,lat] ring, or [lat,lng] pairs. */
+  @IsOptional() polygon?: unknown;
 }
 
 export class AssignZoneDto {
@@ -29,4 +32,6 @@ export class UpdateZoneDto {
   @IsOptional() @Type(() => Number) @IsLongitude() centerLng?: number;
   @IsOptional() @Type(() => Number) @IsNumber() @Min(0.5) @Max(200) radiusKm?: number;
   @IsOptional() @IsBoolean() isActive?: boolean;
+  /** New polygon, or null to remove it and fall back to the circle. */
+  @IsOptional() polygon?: unknown;
 }
