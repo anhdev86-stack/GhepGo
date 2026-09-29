@@ -32,6 +32,16 @@ export function AddressInput({
   const [manual, setManual] = useState(false);
   const lastPicked = useRef(value.address);
 
+  // The parent may set the address from outside (map tap / marker drag / reverse geocoding).
+  useEffect(() => {
+    setQuery((q) => {
+      if (q === value.address) return q;
+      lastPicked.current = value.address;
+      setOpen(false);
+      return value.address;
+    });
+  }, [value.address]);
+
   useEffect(() => {
     if (!token || query.trim().length < 2 || query === lastPicked.current) {
       setOptions([]);

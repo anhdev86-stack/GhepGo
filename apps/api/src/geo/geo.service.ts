@@ -8,7 +8,21 @@ import { GoongProvider } from './providers/goong.provider.js';
 
 const ROUTE_CACHE_TTL_SECS = 600;
 const AUTOCOMPLETE_CACHE_TTL_SECS = 3600;
+const REVERSE_CACHE_TTL_SECS = 86400;
 const PROVIDER_TIMEOUT_MS = 4000;
+
+/** Raster tile layer the web/mobile maps draw; keyless OSM by default. */
+export interface MapTiles {
+  url: string;
+  attribution: string;
+  maxZoom: number;
+}
+
+const OSM_TILES: MapTiles = {
+  url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19,
+};
 
 /**
  * Facade over the configured map provider with Redis caching and a
@@ -18,6 +32,7 @@ const PROVIDER_TIMEOUT_MS = 4000;
 export class GeoService {
   private readonly logger = new Logger(GeoService.name);
   private readonly provider: GeoProvider;
+  readonly tiles: MapTiles;
 
   constructor(
     config: ConfigService,
@@ -28,10 +43,39 @@ export class GeoService {
     this.provider = name === 'goong' && goongKey ? new GoongProvider(goongKey) : new OsmProvider();
     if (name === 'goong' && !goongKey) this.logger.warn('GEO_PROVIDER=goong but GOONG_API_KEY missing, using OSM');
     this.logger.log(`Map provider: ${this.provider.name}`);
+
+    // MAP_TILE_URL lets production point at Goong/Mapbox/self-hosted raster tiles ({z}/{x}/{y} template).
+    const tileUrl = config.get<string>('MAP_TILE_URL')?.trim();
+    this.tiles = tileUrl
+      ? {
+          url: tileUrl,
+          attribution: config.get<string>('MAP_TILE_ATTRIBUTION') ?? OSM_TILES.attribution,
+          maxZoom: Number(config.get<string>('MAP_TILE_MAX_ZOOM') ?? 19),
+        }
+      : OSM_TILES;
   }
 
   get providerName() {
     return this.provider.name;
+  }
+
+  /** What map clients need to draw: provider name + raster tile layer. */
+  config() {
+    return { provider: this.provider.name, tiles: this.tiles };
+  }
+
+  async reverse(lat: number, lng: number): Promise<GeoPlace | null> {
+    const key = `geo:rev:${this.provider.name}:${lat.toFixed(5)},${lng.toFixed(5)}`;
+    const cached = await this.redis.client.get(key).catch(() => null);
+    if (cached) return JSON.parse(cached);
+    try {
+      const place = await this.withTimeout(this.provider.reverse(lat, lng));
+      if (place) await this.redis.client.set(key, JSON.stringify(place), 'EX', REVERSE_CACHE_TTL_SECS).catch(() => undefined);
+      return place;
+    } catch (err) {
+      this.logger.warn(`reverse failed: ${(err as Error).message}`);
+      return null;
+    }
   }
 
   private withTimeout<T>(p: Promise<T>): Promise<T> {

@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
-import { parsePolygonInput, PolygonPreview, ZonePolygonEditor } from "@/components/zone-polygon-editor";
+import { parsePolygonInput, ZonePolygonEditor } from "@/components/zone-polygon-editor";
 
 const vnd = (n: unknown) => Number(n).toLocaleString("vi-VN") + " đ";
 const W_LABEL: Record<string, string> = { REQUESTED: "Chờ duyệt", APPROVED: "Đã duyệt", PAID: "Đã chuyển", REJECTED: "Từ chối" };
@@ -22,6 +22,7 @@ export default function ReportsPage() {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [zone, setZone] = useState({ name: "", centerLat: "10.7769", centerLng: "106.7009", radiusKm: "5", polygonText: "" });
   const [editingZone, setEditingZone] = useState<string | null>(null);
+  const [drawNew, setDrawNew] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
@@ -53,6 +54,9 @@ export default function ReportsPage() {
   };
 
   const maxDay = Math.max(1, ...(ov?.daily.map((d: any) => d.fare) ?? [1]));
+  const zoneRings = zones
+    .filter((z) => z.polygon?.coordinates?.[0])
+    .map((z) => ({ id: z.id, name: z.name, ring: z.polygon.coordinates[0].map(([lng, lat]: [number, number]) => ({ lat, lng })) }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -182,6 +186,7 @@ export default function ReportsPage() {
                   : { centerLat: Number(zone.centerLat), centerLng: Number(zone.centerLng), radiusKm: Number(zone.radiusKm) }),
               });
               setZone({ ...zone, name: "", polygonText: "" });
+              setDrawNew(false);
             });
           }}
         >
@@ -190,15 +195,21 @@ export default function ReportsPage() {
           <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Lng" value={zone.centerLng} onChange={(e) => setZone({ ...zone, centerLng: e.target.value })} />
           <input className="border rounded px-2 py-1 text-sm w-20" placeholder="Bán kính km" value={zone.radiusKm} onChange={(e) => setZone({ ...zone, radiusKm: e.target.value })} />
           <button className="bg-blue-600 text-white rounded px-3 py-1 text-sm">Thêm khu vực</button>
-          <div className="w-full flex gap-3 items-start">
-            <textarea
-              className="border rounded px-2 py-1 font-mono text-xs h-20 flex-1"
-              placeholder="Tuỳ chọn: đa giác (GeoJSON Polygon hoặc mỗi dòng 'lat, lng'). Có đa giác thì bỏ qua tâm/bán kính."
-              value={zone.polygonText}
-              onChange={(e) => setZone({ ...zone, polygonText: e.target.value })}
-            />
-            <PolygonPreview ring={parsePolygonInput(zone.polygonText).ring ?? null} size={80} />
-          </div>
+          <button type="button" className={`rounded px-3 py-1 text-sm border ${drawNew ? "bg-slate-700 text-white" : "text-slate-700"}`} onClick={() => setDrawNew((v) => !v)}>
+            {drawNew ? "Ẩn bản đồ" : "Vẽ đa giác trên bản đồ"}
+          </button>
+          {drawNew && (
+            <div className="w-full">
+              <ZonePolygonEditor
+                token={token}
+                initial={null}
+                center={{ lat: Number(zone.centerLat) || 10.7769, lng: Number(zone.centerLng) || 106.7009 }}
+                otherZones={zoneRings}
+                onChange={(text) => setZone((z) => ({ ...z, polygonText: text }))}
+              />
+              <p className="text-xs text-slate-500 mt-1">Có đa giác thì tâm/bán kính bên trên bị bỏ qua; khu vực khác hiển thị màu xám để tránh chồng lấn.</p>
+            </div>
+          )}
         </form>
         <table className="w-full text-sm mb-3">
           <thead><tr className="text-left text-slate-500"><th>Khu vực</th><th>Hình dạng</th><th>Bán kính</th><th>Tài xế</th><th>Trạng thái</th><th></th></tr></thead>
@@ -237,7 +248,10 @@ export default function ReportsPage() {
                 <tr className="bg-slate-50">
                   <td colSpan={6} className="p-3">
                     <ZonePolygonEditor
+                      token={token}
                       initial={z.polygon?.coordinates?.[0] ?? null}
+                      center={{ lat: z.centerLat, lng: z.centerLng }}
+                      otherZones={zoneRings.filter((r) => r.id !== z.id)}
                       onSave={(ring) => run(() => api.updateZone(token!, z.id, { polygon: { type: "Polygon", coordinates: [ring] } }))}
                       onClear={() => run(() => api.updateZone(token!, z.id, { polygon: null }))}
                     />

@@ -5,6 +5,11 @@ import { mapsLink, useRealtime, useSocketEvent, WS, type DriverLocation } from "
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api } from "@/lib/api";
+import { MapView, type MapCircle, type MapMarker, type MapPolygon } from "@/components/map-view";
+import { useMapTiles } from "@/lib/map";
+
+const ACTIVE_TRIP = ["REQUESTED", "ASSIGNED", "ACCEPTED", "EN_ROUTE_TO_PICKUP", "IN_PROGRESS"];
+const DRIVER_COLOR: Record<string, string> = { AVAILABLE: "Đang trực", ON_TRIP: "Đang chạy", OFFLINE: "Ngoại tuyến" };
 
 export default function AdminPage() {
   const { token, user, isLoading } = useAuth();
@@ -13,13 +18,16 @@ export default function AdminPage() {
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [trips, setTrips] = useState<any[]>([]);
   const [locations, setLocations] = useState<Record<string, DriverLocation>>({});
+  const [zones, setZones] = useState<any[]>([]);
   const { socket, connected } = useRealtime(token);
+  const tiles = useMapTiles(token);
 
   const load = useCallback(() => {
     if (!token) return;
     api.allDrivers(token).then(setDrivers).catch(() => {});
     api.allVehicles(token).then(setVehicles).catch(() => {});
     api.allTrips(token).then(setTrips).catch(() => {});
+    api.zones(token).then(setZones).catch(() => {});
   }, [token]);
 
   useEffect(() => {
@@ -41,6 +49,35 @@ export default function AdminPage() {
     return null;
   }
 
+  const markers: MapMarker[] = [];
+  for (const d of drivers) {
+    if (d.status === "OFFLINE") continue;
+    const live = locations[d.id];
+    const lat = live?.lat ?? d.currentLat;
+    const lng = live?.lng ?? d.currentLng;
+    if (lat == null || lng == null) continue;
+    markers.push({
+      id: `d-${d.id}`,
+      kind: "driver",
+      lat: Number(lat),
+      lng: Number(lng),
+      heading: live?.heading,
+      title: `${d.user?.fullName} · ${DRIVER_COLOR[d.status] ?? d.status}${d.zone?.name ? ` · ${d.zone.name}` : ""}${live ? "" : " · vị trí cũ"}`,
+    });
+  }
+  for (const t of trips) {
+    if (!ACTIVE_TRIP.includes(t.status)) continue;
+    markers.push({ id: `t-${t.id}`, kind: t.status === "REQUESTED" ? "trip" : "pickup", lat: t.pickupLat, lng: t.pickupLng, label: t.tripType === "SHARED" ? "G" : "!", title: `${t.customer?.fullName} · ${t.status} · ${t.pickupAddress}` });
+  }
+  const polygons: MapPolygon[] = [];
+  const circles: MapCircle[] = [];
+  for (const z of zones) {
+    if (!z.isActive) continue;
+    const ring = z.polygon?.coordinates?.[0];
+    if (ring) polygons.push({ id: z.id, ring: ring.map(([lng, lat]: [number, number]) => ({ lat, lng })), title: z.name, color: "#0891b2" });
+    else circles.push({ id: z.id, center: { lat: z.centerLat, lng: z.centerLng }, radiusMeters: z.radiusKm * 1000, title: z.name, color: "#0891b2" });
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -49,6 +86,14 @@ export default function AdminPage() {
           {connected ? "Realtime: kết nối" : "Realtime: mất kết nối"}
         </span>
       </div>
+
+      <section className="bg-white p-4 rounded-lg border">
+        <h2 className="font-medium mb-2">Bản đồ đội xe</h2>
+        <MapView tiles={tiles} markers={markers} polygons={polygons} circles={circles} fitKey={`${zones.length}:${drivers.length}`} height={420} />
+        <p className="text-xs text-slate-500 mt-1">
+          Mũi tên xanh: tài xế đang trực/đang chạy (vị trí GPS trực tiếp, cập nhật realtime) · &quot;!&quot; chuyến bao xe đang chờ · &quot;G&quot; nhóm ghép · A: điểm đón chuyến đã có tài xế · vùng xanh lam: khu vực hoạt động.
+        </p>
+      </section>
 
       <section className="bg-white p-4 rounded-lg border">
         <h2 className="font-medium mb-2">Tài xế ({drivers.length})</h2>

@@ -63,6 +63,7 @@ export class TripsService {
         dropoffLng: dto.dropoffLng,
         distanceMeters,
         durationSecs,
+        routePolyline: route.polyline ?? null,
         fare,
       },
     });

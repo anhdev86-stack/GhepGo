@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
 import { useDriverLocationStream, useRealtime, useSocketEvent, WS } from "@/lib/realtime";
+import { TripMap } from "@/components/trip-map";
+import { MapView, type MapMarker } from "@/components/map-view";
+import { useMapTiles } from "@/lib/map";
 
 const NEXT_ACTION: Record<string, { next: string; label: string }> = {
   ACCEPTED: { next: "EN_ROUTE_TO_PICKUP", label: "Bắt đầu tới điểm đón" },
@@ -53,6 +56,7 @@ export default function DriverPage() {
   const [error, setError] = useState<string | null>(null);
 
   const { lastFix, geoError } = useDriverLocationStream(socket, status !== "OFFLINE");
+  const tiles = useMapTiles(token);
 
   const refresh = useCallback(() => {
     if (!token) return;
@@ -123,6 +127,17 @@ export default function DriverPage() {
   const cashToConfirm = myTrips.filter(
     (t) => t.status === "COMPLETED" && t.payment?.method === "CASH" && t.payment?.status === "PENDING",
   );
+  // Idle map: my position plus every open request so the driver can see where demand is.
+  const idleMarkers: MapMarker[] = [
+    ...(lastFix ? [{ id: "me", kind: "me" as const, lat: lastFix.lat, lng: lastFix.lng, title: "Vị trí của bạn" }] : []),
+    ...available.map((t) => ({ id: `t-${t.id}`, kind: "trip" as const, lat: t.pickupLat, lng: t.pickupLng, label: "!", title: `Bao xe · ${t.pickupAddress} · ${Number(t.fare).toLocaleString("vi-VN")} đ` })),
+    ...availableGroups.flatMap((g) =>
+      g.stops
+        .filter((s: any) => s.kind === "PICKUP")
+        .map((s: any) => ({ id: `g-${s.id}`, kind: "stop" as const, lat: s.lat, lng: s.lng, label: "G", title: `Nhóm ghép ${g.trips.length} khách · ${s.address}` })),
+    ),
+  ];
+  const myLocation = lastFix ? { lat: lastFix.lat, lng: lastFix.lng } : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -181,6 +196,22 @@ export default function DriverPage() {
           <input className="border rounded px-2 py-1 text-sm" placeholder="Dòng xe" value={model} onChange={(e) => setModel(e.target.value)} required />
           <button className="bg-blue-600 text-white rounded px-3 py-1 text-sm">Thêm xe</button>
         </form>
+      </div>
+
+      <div className="bg-white p-4 rounded-lg border">
+        <h2 className="font-medium mb-2">
+          {myGroups.length > 0 ? "Lộ trình chuyến ghép" : activeTrips.length > 0 ? "Lộ trình chuyến bao xe" : "Bản đồ khu vực"}
+        </h2>
+        {myGroups.length > 0 ? (
+          <TripMap token={token} group={myGroups[0]} myLocation={myLocation} height={300} />
+        ) : activeTrips.length > 0 ? (
+          <TripMap token={token} trip={activeTrips[0]} myLocation={myLocation} height={300} />
+        ) : (
+          <MapView tiles={tiles} markers={idleMarkers} center={myLocation ?? undefined} fitKey={`${available.length}:${availableGroups.length}`} height={300} />
+        )}
+        <p className="text-xs text-slate-500 mt-1">
+          Tím: bạn · A/B: đón/trả · số: thứ tự điểm dừng · &quot;!&quot; chuyến bao xe đang chờ · &quot;G&quot; điểm đón nhóm ghép đang chờ
+        </p>
       </div>
 
       {cashToConfirm.length > 0 && (

@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../contexts/auth-context";
+import { TripMap, type MapPin } from "../../components/trip-map";
+import { routePath } from "../../lib/map";
 
 const STATUS_LABEL: Record<string, string> = {
   REQUESTED: "Đang tìm tài xế",
@@ -44,6 +46,27 @@ export default function TripDetailScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, id]);
 
+  const pins = useMemo<MapPin[]>(
+    () =>
+      trip
+        ? [
+            { id: "pickup", kind: "pickup", lat: trip.pickupLat, lng: trip.pickupLng, title: "Điểm đón", description: trip.pickupAddress },
+            { id: "dropoff", kind: "dropoff", lat: trip.dropoffLat, lng: trip.dropoffLng, title: "Điểm trả", description: trip.dropoffAddress },
+          ]
+        : [],
+    [trip],
+  );
+  const route = useMemo(
+    () =>
+      trip
+        ? routePath(trip.routePolyline, [
+            { lat: trip.pickupLat, lng: trip.pickupLng },
+            { lat: trip.dropoffLat, lng: trip.dropoffLng },
+          ])
+        : { points: [], straight: true },
+    [trip],
+  );
+
   if (!isLoading && (!user || user.role !== "DRIVER")) {
     return <Redirect href="/login" />;
   }
@@ -78,8 +101,11 @@ export default function TripDetailScreen() {
   const action = NEXT_ACTION[trip.status];
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.status}>{STATUS_LABEL[trip.status] ?? trip.status}</Text>
+
+      <TripMap pins={pins} route={route.points} straight={route.straight} fitKey={trip.id} height={260} />
+      {route.straight && <Text style={styles.muted}>Tuyến vẽ tạm theo đường thẳng (dịch vụ bản đồ chưa phản hồi).</Text>}
 
       <View style={styles.card}>
         <Text style={styles.label}>Điểm đón</Text>
@@ -130,16 +156,19 @@ export default function TripDetailScreen() {
           <Text style={styles.buttonText}>Về trang chính</Text>
         </Pressable>
       )}
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     padding: 16,
     gap: 12,
     backgroundColor: "#f8fafc",
+  },
+  muted: {
+    color: "#64748b",
+    fontSize: 12,
   },
   center: {
     flex: 1,

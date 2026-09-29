@@ -16,4 +16,6 @@ export interface GeoProvider {
   readonly name: string;
   autocomplete(query: string, near?: { lat: number; lng: number }): Promise<GeoPlace[]>;
   route(points: { lat: number; lng: number }[]): Promise<GeoRoute | null>;
+  /** Nearest address for a coordinate (map tap / marker drag). */
+  reverse(lat: number, lng: number): Promise<GeoPlace | null>;
 }

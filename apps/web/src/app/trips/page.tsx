@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
-import { mapsLink, useNow, useRealtime, useSocketEvent, WS, type DriverLocation } from "@/lib/realtime";
+import { useNow, useRealtime, useSocketEvent, WS, type DriverLocation } from "@/lib/realtime";
+import { TripMap } from "@/components/trip-map";
 
 const STATUS_LABEL: Record<string, string> = {
   REQUESTED: "Đang tìm tài xế",
@@ -108,6 +109,11 @@ export default function TripsPage() {
             <p className="text-sm text-slate-600 mt-1">
               {trip.pickupAddress} → {trip.dropoffAddress}
             </p>
+            {ACTIVE.includes(trip.status) && (
+              <div className="mt-2">
+                <TripMap token={token} trip={trip} driverLocation={ACTIVE.includes(trip.status) ? loc : null} />
+              </div>
+            )}
 
             {trip.tripType === "SHARED" && group && (
               <div className="text-sm text-blue-700 mt-2 bg-blue-50 rounded p-2">
@@ -136,11 +142,8 @@ export default function TripsPage() {
             )}
             {loc && ACTIVE.includes(trip.status) && (
               <p className="text-sm text-green-700 mt-1">
-                Vị trí tài xế: {loc.lat.toFixed(5)}, {loc.lng.toFixed(5)}{" "}
-                <a className="underline" href={mapsLink(loc.lat, loc.lng)} target="_blank" rel="noreferrer">
-                  mở bản đồ
-                </a>{" "}
-                <span className="text-slate-400">({Math.max(0, Math.round((now - loc.updatedAt) / 1000))}s trước)</span>
+                Tài xế đang trên bản đồ{loc.speed != null && loc.speed > 0.5 ? ` · ${Math.round(loc.speed * 3.6)} km/h` : ""}{" "}
+                <span className="text-slate-400">(cập nhật {Math.max(0, Math.round((now - loc.updatedAt) / 1000))}s trước)</span>
               </p>
             )}
 

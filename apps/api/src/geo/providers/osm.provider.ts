@@ -36,6 +36,28 @@ export class OsmProvider implements GeoProvider {
     }));
   }
 
+  async reverse(lat: number, lng: number): Promise<GeoPlace | null> {
+    const params = new URLSearchParams({
+      lat: String(lat),
+      lon: String(lng),
+      format: 'jsonv2',
+      zoom: '18',
+      'accept-language': 'vi',
+    });
+    const res = await fetch(`${this.nominatim}/reverse?${params}`, {
+      headers: { 'User-Agent': 'GhepGo-dev/0.1 (contact: dev@ghepgo.local)' },
+    });
+    if (!res.ok) return null;
+    const p = (await res.json()) as { display_name?: string; name?: string; lat?: string; lon?: string; error?: string };
+    if (!p.display_name) return null;
+    return {
+      label: p.name || p.display_name.split(',')[0],
+      address: p.display_name,
+      lat: p.lat ? Number(p.lat) : lat,
+      lng: p.lon ? Number(p.lon) : lng,
+    };
+  }
+
   async route(points: { lat: number; lng: number }[]): Promise<GeoRoute | null> {
     if (points.length < 2) return null;
     const coords = points.map((p) => `${p.lng},${p.lat}`).join(';');

@@ -14,6 +14,8 @@ Tiến độ theo lộ trình:
 
 Bản đồ: lớp `GeoService` có thể cắm provider — mặc định **OSM** (Nominatim + OSRM, không cần key, chỉ dùng dev),
 đặt `GEO_PROVIDER=goong` + `GOONG_API_KEY` để chuyển sang Goong. Quãng đường/ETA lấy từ routing thật, fallback đường chim bay ×1.3.
+Web (Leaflet) và app tài xế (react-native-maps) vẽ bản đồ tương tác: tuyến đường polyline, điểm đón/trả, điểm dừng nhóm ghép,
+vị trí tài xế realtime, khu vực phục vụ; khách chọn điểm bằng cách chạm/kéo ghim trên bản đồ, admin vẽ khu vực trực tiếp.
 
 ## Kiến trúc monorepo
 
@@ -83,7 +85,9 @@ API chạy tại `http://localhost:3001/api`.
   `GET /trips/all` (admin).
 - **Trip groups (xe ghép)**: `GET /trip-groups/available`, `GET /trip-groups/mine`,
   `POST /trip-groups/:id/accept`, `PATCH /trip-groups/:id/advance` (đánh dấu xong điểm dừng kế tiếp).
-- **Geo**: `GET /geo/autocomplete?q&lat&lng`, `GET /geo/route?fromLat&fromLng&toLat&toLng`, `GET /geo/provider`.
+- **Geo**: `GET /geo/autocomplete?q&lat&lng`, `GET /geo/route?fromLat&fromLng&toLat&toLng` hoặc `?points=lat,lng;lat,lng;…`
+  (tối đa 25 điểm, trả `distanceMeters`, `durationSecs`, `polyline` polyline5 khi provider có, `estimated` khi fallback),
+  `GET /geo/reverse?lat&lng` (địa chỉ từ toạ độ, `{place: null}` khi không có), `GET /geo/provider` (tên provider + lớp tile raster).
 - **Wallet**: `GET /wallet/me`, `GET /wallet/me/transactions`, `POST /wallet/topup` (tạo giao dịch PENDING + URL cổng),
   `POST /wallet/topup/callback` (IPN, xác thực HMAC-SHA256 bằng `PAYMENT_WEBHOOK_SECRET`, idempotent),
   `POST /wallet/trips/:id/confirm-cash` (tài xế xác nhận đã thu tiền mặt),
@@ -95,6 +99,20 @@ Trạng thái chuyến đi: `REQUESTED → ACCEPTED → EN_ROUTE_TO_PICKUP → I
 (hoặc `CANCELLED`), được validate ở server.
 
 Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSensitiveInterceptor`.
+
+### Bản đồ (`src/geo`, web `components/map-view.tsx`, mobile `components/trip-map.tsx`)
+
+- API lưu `trips.routePolyline` (polyline5 của tuyến đường thật) khi đặt bao xe; nhóm ghép lấy tuyến qua các điểm dừng còn lại
+  bằng `GET /geo/route?points=…` (cache Redis 10 phút). Không có polyline (provider lỗi) thì client vẽ đường thẳng nét đứt.
+- Lớp tile: mặc định OSM (`tile.openstreetmap.org`, chỉ dùng dev/traffic thấp). Production đặt `MAP_TILE_URL`
+  (mẫu `{z}/{x}/{y}`, ví dụ tile raster Goong/Mapbox/self-host), `MAP_TILE_ATTRIBUTION`, `MAP_TILE_MAX_ZOOM`; client đọc từ `GET /geo/provider`.
+- **Web** (Leaflet, không cần key): `/book` chọn điểm đón/trả bằng chạm bản đồ hoặc kéo ghim A/B (tự reverse geocode),
+  xem tuyến, tài xế đang trực, khu vực phục vụ; `/trips` tuyến + vị trí tài xế realtime + thứ tự điểm dừng nhóm ghép;
+  `/driver` lộ trình chuyến/nhóm đang chạy hoặc bản đồ nhu cầu (chuyến chờ); `/admin` bản đồ đội xe; `/admin/reports`
+  vẽ đa giác khu vực trực tiếp (chạm thêm đỉnh, kéo chỉnh, bấm xoá) — vẫn dán được GeoJSON.
+- **Mobile** (`react-native-maps`, có sẵn trong Expo Go): màn chuyến bao xe và chuyến ghép hiển thị ghim, tuyến và chấm vị trí
+  của thiết bị. iOS dùng Apple Maps (không cần key). Android **development build** cần Google Maps key:
+  thêm `"android": {"config": {"googleMaps": {"apiKey": "..."}}}` vào `app.json` (Expo Go đã có key riêng).
 
 ### OTP / SMS (`src/auth/otp`, `src/sms`)
 
@@ -208,12 +226,12 @@ pnpm dev
 Chạy tại `http://localhost:3000`. Cấu hình API qua `apps/web/.env.local`
 (`NEXT_PUBLIC_API_URL=http://localhost:3001/api`).
 
-Trang chính: `/login`, `/book` (khách đặt xe: autocomplete địa chỉ, xem quãng đường/giá dự kiến, chọn tiền mặt/ví,
-số tài xế đang trực quanh điểm đón), `/wallet` (khách: nạp ví, lịch sử; tài xế: KPI, rút tiền), `/admin/reports`
-(báo cáo, duyệt rút tiền, khu vực),
-`/trips` (khách theo dõi chuyến realtime: trạng thái, lộ trình nhóm ghép, vị trí tài xế, huỷ chuyến),
-`/driver` (bảng điều khiển tài xế: gửi GPS trình duyệt khi bật trực, nhận bao xe/nhóm ghép,
-tiến điểm dừng), `/admin` (quản trị đội xe/chuyến đi kèm vị trí live, chỉ role ADMIN).
+Trang chính: `/login`, `/book` (khách đặt xe: autocomplete địa chỉ hoặc chọn trên bản đồ, xem tuyến/quãng đường/giá dự kiến,
+chọn tiền mặt/ví, tài xế đang trực quanh điểm đón), `/wallet` (khách: nạp ví, lịch sử; tài xế: KPI, rút tiền), `/admin/reports`
+(báo cáo, duyệt rút tiền, khu vực vẽ trên bản đồ),
+`/trips` (khách theo dõi chuyến realtime trên bản đồ: trạng thái, lộ trình nhóm ghép, vị trí tài xế, huỷ chuyến),
+`/driver` (bảng điều khiển tài xế: bản đồ lộ trình, gửi GPS trình duyệt khi bật trực, nhận bao xe/nhóm ghép,
+tiến điểm dừng), `/admin` (bản đồ đội xe live + quản trị tài xế/xe/chuyến, chỉ role ADMIN).
 
 ## 4. Mobile app cho tài xế (`apps/mobile`)
 
@@ -231,7 +249,8 @@ Dùng Expo Go hoặc emulator để quét mã QR. Cấu hình API qua `apps/mobi
 
 Màn hình: đăng nhập/đăng ký tài xế → dashboard (thêm xe, bật/tắt trực — khi trực app gửi GPS
 qua `expo-location` + Socket.io, nhận bao xe hoặc nhóm ghép) → chi tiết chuyến bao xe
-(`trip/[id]`, có nút xác nhận thu tiền mặt) hoặc chuyến ghép (`group/[id]`: danh sách điểm dừng, nút "Đã đón/Đã trả"),
+(`trip/[id]`, bản đồ tuyến A→B, có nút xác nhận thu tiền mặt) hoặc chuyến ghép (`group/[id]`: bản đồ điểm dừng đánh số + tuyến
+còn lại, danh sách điểm dừng, nút "Đã đón/Đã trả"),
 màn `earnings` (số dư, KPI, rút tiền, lịch sử).
 **GPS chạy nền** (`src/lib/background-location.ts`): khi bật trực, app khởi động `expo-location`
 `startLocationUpdatesAsync` với task `expo-task-manager` — Android chạy foreground service có thông báo
@@ -253,7 +272,7 @@ khi app không ở foreground (mở app thì socket đảm nhiệm để tránh 
 
 ```bash
 cd apps/api
-pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, health
+pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, điểm tuyến geo, health
 pnpm test:e2e      # e2e (vitest + supertest + socket.io-client) trên Postgres + Redis thật: 17 kịch bản
 pnpm build
 ```
@@ -261,7 +280,7 @@ pnpm build
 E2E (`apps/api/test/*.e2e-spec.ts`) khởi động toàn bộ AppModule trên cổng ngẫu nhiên và chạy các luồng thật:
 OTP/đăng ký/refresh/logout/khoá đăng nhập, ghép nhóm + ghép động + huỷ + race nhận chuyến + sự kiện socket,
 ví/hoa hồng/fallback tiền mặt/rút tiền/IPN VNPay và MoMo, khu vực (tròn + đa giác), khiếu nại + hoàn tiền,
-push device, đánh giá, KPI, hết hạn chuyến. Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
+push device, đánh giá, KPI, hết hạn chuyến, cấu hình bản đồ/tuyến nhiều điểm/reverse geocode. Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
 không mạng). CI chạy cả unit lẫn e2e.
 
 ## CI/CD và triển khai
@@ -312,10 +331,11 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **MoMo**: dùng bộ credentials test công khai trong tài liệu MoMo (partnerCode `MOMO`, accessKey `F8BBA842ECF85`,
   secretKey `K951B6PE1waDMi640xX08PD3vg6EkVlz`) điền vào `MOMO_*` để chạy sandbox; production đăng ký tại
   https://business.momo.vn . IPN MoMo được gửi kèm mỗi request nên chỉ cần `API_PUBLIC_URL` truy cập được từ Internet.
-- **Bản đồ**: lấy Goong API key (hoặc Mapbox) cho production; vẽ bản đồ/polyline trên web & mobile (hiện chỉ toạ độ + link).
+- **Bản đồ**: lấy Goong API key (hoặc Mapbox) cho production và đặt `MAP_TILE_URL` thay tile OSM công cộng; Google Maps key
+  cho development build Android.
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
-- Vẽ khu vực trực tiếp trên bản đồ khi đã chọn Goong/Mapbox; SLA và phân công admin cho khiếu nại.
+- SLA và phân công admin cho khiếu nại.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

@@ -97,6 +97,13 @@ export const api = {
 
   driverMe: (token: string) => request<any>("/drivers/me", { token }),
 
+  /** Road route through ordered waypoints (carpool stops); `polyline` absent when estimated. */
+  routePoints: (token: string, points: { lat: number; lng: number }[]) =>
+    request<{ distanceMeters: number; durationSecs: number; estimated: boolean; polyline?: string }>(
+      `/geo/route?points=${points.map((p) => `${p.lat},${p.lng}`).join(";")}`,
+      { token },
+    ),
+
   availableGroups: (token: string) => request<any[]>("/trip-groups/available", { token }),
 
   myGroups: (token: string) => request<any[]>("/trip-groups/mine", { token }),
