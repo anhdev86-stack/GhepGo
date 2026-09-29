@@ -13,7 +13,7 @@ export interface MapPin {
   description?: string;
 }
 
-const PIN_COLOR = { pickup: "#16a34a", dropoff: "#ea580c", done: "#94a3b8" } as const;
+const PIN_COLOR = { pickup: "#16a34a", dropoff: "#ea580c", done: "#8d97b0" } as const;
 
 /**
  * Route map for the driver app: pins (A/B or numbered stops), the road
@@ -68,7 +68,7 @@ export function TripMap({
         {route.length >= 2 && (
           <Polyline
             coordinates={route.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
-            strokeColor="#2563eb"
+            strokeColor="#0b8c75"
             strokeWidth={4}
             lineDashPattern={straight ? [8, 8] : undefined}
           />
@@ -89,7 +89,7 @@ export function TripMap({
 }
 
 const styles = StyleSheet.create({
-  wrap: { borderRadius: 10, overflow: "hidden", borderWidth: 1, borderColor: "#e2e8f0", backgroundColor: "#e2e8f0" },
+  wrap: { borderRadius: 16, overflow: "hidden", borderWidth: 1, borderColor: "#d9dde8", backgroundColor: "#d9dde8" },
   pinWrap: { alignItems: "center" },
   pin: {
     width: 26,

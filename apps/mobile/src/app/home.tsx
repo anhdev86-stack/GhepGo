@@ -190,7 +190,7 @@ export default function HomeScreen() {
                 disabled={status === "ON_TRIP"}
                 style={[
                   styles.smallButton,
-                  { backgroundColor: status === "OFFLINE" ? "#16a34a" : "#64748b", opacity: status === "ON_TRIP" ? 0.5 : 1 },
+                  { backgroundColor: status === "OFFLINE" ? "#0b8c75" : "#667092", opacity: status === "ON_TRIP" ? 0.5 : 1 },
                 ]}
               >
                 <Text style={styles.buttonText}>{status === "OFFLINE" ? "Bắt đầu trực" : "Ngừng trực"}</Text>
@@ -301,11 +301,11 @@ export default function HomeScreen() {
       )}
       ListFooterComponent={
         <View>
-          <Pressable style={[styles.button, { marginTop: 8, backgroundColor: "#0f766e" }]} onPress={() => router.push("/earnings")}>
+          <Pressable style={[styles.button, { marginTop: 8, backgroundColor: "#0d594d" }]} onPress={() => router.push("/earnings")}>
             <Text style={styles.buttonText}>Thu nhập & rút tiền</Text>
           </Pressable>
           <Pressable
-            style={[styles.button, { marginTop: 8, backgroundColor: "#475569" }]}
+            style={[styles.button, { marginTop: 8, backgroundColor: "#4d5678" }]}
             onPress={() => {
               setUnread(0);
               router.push("/notifications");
@@ -313,7 +313,7 @@ export default function HomeScreen() {
           >
             <Text style={styles.buttonText}>Thông báo{unread > 0 ? ` (${unread} mới)` : ""}</Text>
           </Pressable>
-          <Pressable style={[styles.button, { marginTop: 8, backgroundColor: "#64748b" }]} onPress={() => router.push("/complaints")}>
+          <Pressable style={[styles.button, { marginTop: 8, backgroundColor: "#667092" }]} onPress={() => router.push("/complaints")}>
             <Text style={styles.buttonText}>Khiếu nại & hỗ trợ</Text>
           </Pressable>
           <Pressable onPress={logout} style={{ marginTop: 16 }}>
@@ -329,13 +329,13 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     gap: 12,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#f6f7fb",
   },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#d9dde8",
     padding: 14,
     marginBottom: 12,
   },
@@ -353,24 +353,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   muted: {
-    color: "#64748b",
+    color: "#667092",
     fontSize: 13,
   },
   input: {
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 8,
+    borderColor: "#d9dde8",
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
   button: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
+    backgroundColor: "#0b8c75",
+    borderRadius: 12,
     paddingVertical: 10,
     alignItems: "center",
   },
   smallButton: {
-    borderRadius: 6,
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },

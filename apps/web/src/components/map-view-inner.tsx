@@ -200,7 +200,7 @@ export function MapViewInner({
 
   // Leaflet owns the inner div's class list; React only ever touches the wrapper.
   return (
-    <div className={`w-full rounded-lg border overflow-hidden z-0 ${className}`} style={{ height }}>
+    <div className={`w-full rounded-2xl border border-ink-200/70 overflow-hidden z-0 ${className}`} style={{ height }}>
       <div ref={el} className="h-full w-full" />
     </div>
   );

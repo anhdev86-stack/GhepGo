@@ -4,7 +4,8 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
-import { CATEGORY_LABEL, COMPLAINT_STATUS, ComplaintThread } from "@/components/complaint-thread";
+import { CATEGORY_LABEL, ComplaintRow, ComplaintThread } from "@/components/complaint-thread";
+import { Alert, Button, Card, CardTitle, EmptyState, Field, Icon, PageHeader, Select, Textarea } from "@/components/ui";
 
 function ComplaintsPage() {
   const { token, user, isLoading } = useAuth();
@@ -53,48 +54,54 @@ function ComplaintsPage() {
   };
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold">Khiếu nại & hỗ trợ</h1>
+    <div>
+      <PageHeader title="Khiếu nại & hỗ trợ" description="Báo cáo sự cố về một chuyến đi; đội hỗ trợ GhepGo sẽ phản hồi trong luồng trao đổi." />
 
       {tripId && (
-        <form onSubmit={submit} className="bg-white p-4 rounded-lg border flex flex-col gap-2">
-          <h2 className="font-medium">Gửi khiếu nại cho chuyến đi</h2>
-          <select className="border rounded px-3 py-2" value={category} onChange={(e) => setCategory(e.target.value)}>
-            {(categories.length ? categories : Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })))
-              .filter((c) => (user?.role === "DRIVER" ? c.value !== "DRIVER_BEHAVIOR" : c.value !== "CUSTOMER_BEHAVIOR"))
-              .map((c) => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
-          </select>
-          <textarea className="border rounded px-3 py-2" rows={4} minLength={10} required placeholder="Mô tả sự việc (ít nhất 10 ký tự)" value={description} onChange={(e) => setDescription(e.target.value)} />
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-          <div className="flex gap-2">
-            <button disabled={busy} className="bg-blue-600 text-white rounded px-3 py-2 text-sm disabled:opacity-50">Gửi khiếu nại</button>
-            <button type="button" onClick={() => router.replace("/complaints")} className="text-sm text-slate-500 underline">Huỷ</button>
-          </div>
-        </form>
+        <Card className="mb-5 border-brand-200">
+          <CardTitle description="Mô tả càng cụ thể, chúng tôi xử lý càng nhanh.">Gửi khiếu nại cho chuyến đi</CardTitle>
+          <form onSubmit={submit} className="grid gap-3">
+            <Field label="Loại sự cố">
+              <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                {(categories.length ? categories : Object.entries(CATEGORY_LABEL).map(([value, label]) => ({ value, label })))
+                  .filter((c) => (user?.role === "DRIVER" ? c.value !== "DRIVER_BEHAVIOR" : c.value !== "CUSTOMER_BEHAVIOR"))
+                  .map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+              </Select>
+            </Field>
+            <Field label="Mô tả sự việc">
+              <Textarea rows={4} minLength={10} required placeholder="Ít nhất 10 ký tự" value={description} onChange={(e) => setDescription(e.target.value)} />
+            </Field>
+            {error && <Alert>{error}</Alert>}
+            <div className="flex gap-2">
+              <Button type="submit" loading={busy}>
+                Gửi khiếu nại
+              </Button>
+              <Button type="button" variant="ghost" onClick={() => router.replace("/complaints")}>
+                Huỷ
+              </Button>
+            </div>
+          </form>
+        </Card>
       )}
 
-      <div className="grid md:grid-cols-[1fr_1.4fr] gap-4">
-        <div className="bg-white rounded-lg border divide-y">
-          {items.length === 0 && <p className="p-4 text-sm text-slate-500">Chưa có khiếu nại nào.</p>}
+      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-5 items-start">
+        <Card padded={false} className="divide-y divide-ink-100 overflow-hidden">
+          {items.length === 0 && <EmptyState icon={<Icon.shield className="h-6 w-6" />} title="Chưa có khiếu nại nào" description="Bạn có thể báo cáo sự cố từ lịch sử chuyến đi." />}
           {items.map((c) => (
-            <button key={c.id} onClick={() => setSelected(c.id)} className={`w-full text-left p-3 text-sm hover:bg-slate-50 ${selected === c.id ? "bg-slate-50" : ""}`}>
-              <div className="flex justify-between gap-2">
-                <span className="font-medium">{CATEGORY_LABEL[c.category] ?? c.category}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${COMPLAINT_STATUS[c.status]?.cls}`}>{COMPLAINT_STATUS[c.status]?.label}</span>
-              </div>
-              <p className="text-slate-600 truncate">{c.trip.pickupAddress} → {c.trip.dropoffAddress}</p>
-              <p className="text-xs text-slate-400">
-                {c.reporter.id !== user?.id ? `${c.reporter.fullName} khiếu nại về bạn · ` : ""}
-                {new Date(c.createdAt).toLocaleDateString("vi-VN")} · {c._count.messages} tin nhắn
-              </p>
-            </button>
+            <ComplaintRow
+              key={c.id}
+              c={c}
+              selected={selected === c.id}
+              onSelect={() => setSelected(c.id)}
+              subtitle={`${c.reporter.id !== user?.id ? `${c.reporter.fullName} khiếu nại về bạn · ` : ""}${new Date(c.createdAt).toLocaleDateString("vi-VN")} · ${c._count.messages} tin nhắn`}
+            />
           ))}
-        </div>
-        <div className="bg-white rounded-lg border p-4">
-          {selected ? <ComplaintThread id={selected} onChanged={load} /> : <p className="text-sm text-slate-500">Chọn một khiếu nại để xem.</p>}
-        </div>
+        </Card>
+        <Card>{selected ? <ComplaintThread id={selected} onChanged={load} /> : <EmptyState title="Chọn một khiếu nại để xem" description="Luồng trao đổi với đội hỗ trợ hiện ở đây." />}</Card>
       </div>
     </div>
   );

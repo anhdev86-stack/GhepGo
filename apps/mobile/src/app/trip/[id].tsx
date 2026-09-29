@@ -74,7 +74,7 @@ export default function TripDetailScreen() {
   if (!trip) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color="#0b8c75" />
       </View>
     );
   }
@@ -148,11 +148,11 @@ export default function TripDetailScreen() {
       )}
       {["COMPLETED", "CANCELLED", "IN_PROGRESS"].includes(trip.status) && (
         <Pressable onPress={() => router.push({ pathname: "/complaints", params: { tripId: trip.id } })}>
-          <Text style={{ color: "#64748b", textAlign: "center", textDecorationLine: "underline" }}>Báo cáo sự cố / khiếu nại</Text>
+          <Text style={{ color: "#667092", textAlign: "center", textDecorationLine: "underline" }}>Báo cáo sự cố / khiếu nại</Text>
         </Pressable>
       )}
       {trip.status === "COMPLETED" && trip.payment?.status === "PAID" && (
-        <Pressable style={[styles.button, { backgroundColor: "#64748b" }]} onPress={() => router.replace("/home")}>
+        <Pressable style={[styles.button, { backgroundColor: "#667092" }]} onPress={() => router.replace("/home")}>
           <Text style={styles.buttonText}>Về trang chính</Text>
         </Pressable>
       )}
@@ -164,10 +164,10 @@ const styles = StyleSheet.create({
   container: {
     padding: 16,
     gap: 12,
-    backgroundColor: "#f8fafc",
+    backgroundColor: "#f6f7fb",
   },
   muted: {
-    color: "#64748b",
+    color: "#667092",
     fontSize: 12,
   },
   center: {
@@ -181,14 +181,14 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
+    borderColor: "#d9dde8",
     padding: 14,
     gap: 4,
   },
   label: {
-    color: "#64748b",
+    color: "#667092",
     fontSize: 12,
     marginTop: 6,
   },
@@ -196,8 +196,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   button: {
-    backgroundColor: "#16a34a",
-    borderRadius: 8,
+    backgroundColor: "#0b8c75",
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
   },

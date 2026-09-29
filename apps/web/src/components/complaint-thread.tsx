@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
+import { Alert, Avatar, Badge, Button, Field, Input, RouteLine, Spinner, Textarea, type Tone } from "@/components/ui";
 
-export const COMPLAINT_STATUS: Record<string, { label: string; cls: string }> = {
-  OPEN: { label: "Mới", cls: "bg-orange-100 text-orange-700" },
-  IN_REVIEW: { label: "Đang xử lý", cls: "bg-blue-100 text-blue-700" },
-  RESOLVED: { label: "Đã giải quyết", cls: "bg-green-100 text-green-700" },
-  REJECTED: { label: "Từ chối", cls: "bg-slate-200 text-slate-600" },
+export const COMPLAINT_STATUS: Record<string, { label: string; tone: Tone }> = {
+  OPEN: { label: "Mới", tone: "amber" },
+  IN_REVIEW: { label: "Đang xử lý", tone: "blue" },
+  RESOLVED: { label: "Đã giải quyết", tone: "green" },
+  REJECTED: { label: "Từ chối", tone: "slate" },
 };
 export const CATEGORY_LABEL: Record<string, string> = {
   DRIVER_BEHAVIOR: "Thái độ tài xế",
@@ -42,8 +43,14 @@ export function ComplaintThread({ id, onChanged }: { id: string; onChanged?: () 
     load();
   }, [load]);
 
-  if (!c) return <p className="text-sm text-slate-500">Đang tải...</p>;
+  if (!c)
+    return (
+      <div className="flex items-center gap-2 text-sm text-ink-500 py-8 justify-center">
+        <Spinner className="h-4 w-4" /> Đang tải…
+      </div>
+    );
   const closed = ["RESOLVED", "REJECTED"].includes(c.status);
+  const st = COMPLAINT_STATUS[c.status] ?? { label: c.status, tone: "slate" as Tone };
 
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true);
@@ -60,40 +67,48 @@ export function ComplaintThread({ id, onChanged }: { id: string; onChanged?: () 
   };
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex justify-between items-start gap-2">
-        <div>
-          <p className="font-medium">{CATEGORY_LABEL[c.category] ?? c.category}</p>
-          <p className="text-sm text-slate-600">
-            {c.trip.pickupAddress} → {c.trip.dropoffAddress} · {vnd(c.trip.fare)}
-          </p>
-          <p className="text-xs text-slate-500">
+    <div className="flex flex-col gap-4">
+      <div className="flex justify-between items-start gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-ink-900 text-lg">{CATEGORY_LABEL[c.category] ?? c.category}</p>
+          <p className="text-xs text-ink-500 mt-0.5">
             {c.reporter.fullName} ({c.reporter.role === "DRIVER" ? "tài xế" : "khách"}) khiếu nại
             {c.againstUser ? ` ${c.againstUser.fullName}` : ""} · {new Date(c.createdAt).toLocaleString("vi-VN")}
           </p>
         </div>
-        <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${COMPLAINT_STATUS[c.status]?.cls}`}>
-          {COMPLAINT_STATUS[c.status]?.label ?? c.status}
-        </span>
+        <Badge tone={st.tone} dot>
+          {st.label}
+        </Badge>
       </div>
-      <p className="text-sm bg-slate-50 rounded p-2 whitespace-pre-wrap">{c.description}</p>
-      {c.refundAmount && <p className="text-sm text-green-700">Đã hoàn {vnd(c.refundAmount)} vào ví khách.</p>}
 
-      <ul className="flex flex-col gap-2">
+      <div className="rounded-xl border border-ink-200/70 p-3">
+        <RouteLine pickup={c.trip.pickupAddress} dropoff={c.trip.dropoffAddress} />
+        <p className="text-xs text-ink-500 mt-2 pl-6">Giá cước {vnd(c.trip.fare)}</p>
+      </div>
+
+      <p className="text-sm bg-ink-50 rounded-xl p-3 whitespace-pre-wrap text-ink-800">{c.description}</p>
+      {c.refundAmount && <Alert tone="green">Đã hoàn {vnd(c.refundAmount)} vào ví khách.</Alert>}
+
+      <ul className="flex flex-col gap-2.5">
         {c.messages.map((m: any) => {
           const mine = m.author.id === user?.id;
+          const isAdmin = m.author.role === "ADMIN";
           return (
-            <li key={m.id} className={`text-sm max-w-[85%] rounded-lg px-3 py-2 ${mine ? "self-end bg-blue-600 text-white" : m.author.role === "ADMIN" ? "self-start bg-yellow-50 border border-yellow-200" : "self-start bg-slate-100"}`}>
-              <p className={`text-[11px] ${mine ? "text-blue-100" : "text-slate-500"}`}>
-                {m.author.fullName}{m.author.role === "ADMIN" ? " · GhepGo" : ""} · {new Date(m.createdAt).toLocaleString("vi-VN")}
-              </p>
-              <p className="whitespace-pre-wrap">{m.body}</p>
+            <li key={m.id} className={`flex gap-2 max-w-[88%] ${mine ? "self-end flex-row-reverse" : "self-start"}`}>
+              {!mine && <Avatar name={isAdmin ? "GhepGo" : m.author.fullName} size={28} className={isAdmin ? "bg-ink-900 text-white" : ""} />}
+              <div className={`rounded-2xl px-3.5 py-2 text-sm ${mine ? "bg-brand-600 text-white rounded-tr-sm" : isAdmin ? "bg-amber-50 border border-amber-200 text-ink-900 rounded-tl-sm" : "bg-ink-100 text-ink-900 rounded-tl-sm"}`}>
+                <p className={`text-[11px] mb-0.5 ${mine ? "text-white/70" : "text-ink-500"}`}>
+                  {m.author.fullName}
+                  {isAdmin ? " · GhepGo" : ""} · {new Date(m.createdAt).toLocaleString("vi-VN")}
+                </p>
+                <p className="whitespace-pre-wrap">{m.body}</p>
+              </div>
             </li>
           );
         })}
       </ul>
 
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && <Alert>{error}</Alert>}
 
       {!closed && (
         <form
@@ -107,34 +122,57 @@ export function ComplaintThread({ id, onChanged }: { id: string; onChanged?: () 
             });
           }}
         >
-          <input className="border rounded px-3 py-2 flex-1 text-sm" placeholder="Nhập tin nhắn..." value={msg} onChange={(e) => setMsg(e.target.value)} />
-          <button disabled={busy} className="bg-blue-600 text-white rounded px-3 py-2 text-sm disabled:opacity-50">Gửi</button>
+          <Input placeholder="Nhập tin nhắn…" value={msg} onChange={(e) => setMsg(e.target.value)} />
+          <Button type="submit" loading={busy}>
+            Gửi
+          </Button>
         </form>
       )}
 
       {user?.role === "ADMIN" && !closed && (
-        <div className="border-t pt-3 flex flex-col gap-2 text-sm">
-          <p className="font-medium">Xử lý khiếu nại</p>
-          <textarea className="border rounded px-3 py-2" rows={2} placeholder="Kết luận gửi cho hai bên" value={resolution} onChange={(e) => setResolution(e.target.value)} />
-          <div className="flex flex-wrap gap-2 items-center">
-            <label className="flex items-center gap-1">
-              Hoàn cho khách
-              <input type="number" className="border rounded px-2 py-1 w-28" min={0} max={Number(c.trip.fare)} step={1000} value={refund} onChange={(e) => setRefund(e.target.value)} />
-              đ
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={chargeDriver} onChange={(e) => setChargeDriver(e.target.checked)} /> trừ ví tài xế
+        <div className="border-t border-ink-100 pt-4 flex flex-col gap-3 text-sm">
+          <p className="font-semibold text-ink-900">Xử lý khiếu nại</p>
+          <Textarea rows={2} placeholder="Kết luận gửi cho hai bên" value={resolution} onChange={(e) => setResolution(e.target.value)} />
+          <div className="flex flex-wrap gap-3 items-end">
+            <Field label="Hoàn cho khách (đ)">
+              <Input type="number" className="w-36 py-1.5" min={0} max={Number(c.trip.fare)} step={1000} value={refund} onChange={(e) => setRefund(e.target.value)} />
+            </Field>
+            <label className="flex items-center gap-2 pb-2.5 text-ink-700">
+              <input type="checkbox" className="h-4 w-4 accent-brand-600" checked={chargeDriver} onChange={(e) => setChargeDriver(e.target.checked)} /> Trừ ví tài xế
             </label>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {c.status === "OPEN" && (
-              <button disabled={busy} onClick={() => run(() => api.resolveComplaint(token!, id, { status: "IN_REVIEW" }))} className="border rounded px-3 py-1.5">Nhận xử lý</button>
+              <Button variant="secondary" disabled={busy} onClick={() => run(() => api.resolveComplaint(token!, id, { status: "IN_REVIEW" }))}>
+                Nhận xử lý
+              </Button>
             )}
-            <button disabled={busy} onClick={() => run(() => api.resolveComplaint(token!, id, { status: "RESOLVED", resolution: resolution || undefined, refundAmount: Number(refund) || 0, chargeDriver }))} className="bg-green-600 text-white rounded px-3 py-1.5">Giải quyết</button>
-            <button disabled={busy} onClick={() => run(() => api.resolveComplaint(token!, id, { status: "REJECTED", resolution: resolution || undefined }))} className="bg-slate-500 text-white rounded px-3 py-1.5">Từ chối</button>
+            <Button disabled={busy} onClick={() => run(() => api.resolveComplaint(token!, id, { status: "RESOLVED", resolution: resolution || undefined, refundAmount: Number(refund) || 0, chargeDriver }))}>
+              Giải quyết
+            </Button>
+            <Button variant="ghost" disabled={busy} onClick={() => run(() => api.resolveComplaint(token!, id, { status: "REJECTED", resolution: resolution || undefined }))}>
+              Từ chối
+            </Button>
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+/** Shared list row for the complaint inboxes. */
+export function ComplaintRow({ c, selected, onSelect, subtitle }: { c: any; selected: boolean; onSelect: () => void; subtitle: string }) {
+  const st = COMPLAINT_STATUS[c.status] ?? { label: c.status, tone: "slate" as Tone };
+  return (
+    <button onClick={onSelect} className={`w-full text-left px-4 py-3 text-sm transition ${selected ? "bg-brand-50/70" : "hover:bg-ink-50"}`}>
+      <div className="flex justify-between gap-2">
+        <span className="font-semibold text-ink-900">{CATEGORY_LABEL[c.category] ?? c.category}</span>
+        <Badge tone={st.tone}>{st.label}</Badge>
+      </div>
+      <p className="text-ink-600 truncate mt-0.5">
+        {c.trip.pickupAddress} → {c.trip.dropoffAddress}
+      </p>
+      <p className="text-xs text-ink-400 mt-0.5">{subtitle}</p>
+    </button>
   );
 }

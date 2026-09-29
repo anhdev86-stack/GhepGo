@@ -111,7 +111,7 @@ export default function ComplaintsScreen() {
           <Text style={styles.title}>{CATEGORY_LABEL[detail.category] ?? detail.category} · {STATUS_LABEL[detail.status]}</Text>
           <Text style={styles.muted}>{detail.trip.pickupAddress} → {detail.trip.dropoffAddress}</Text>
           <Text style={styles.body}>{detail.description}</Text>
-          {detail.refundAmount ? <Text style={{ color: "#15803d" }}>Đã hoàn {Number(detail.refundAmount).toLocaleString("vi-VN")} đ cho khách.</Text> : null}
+          {detail.refundAmount ? <Text style={{ color: "#0b705f" }}>Đã hoàn {Number(detail.refundAmount).toLocaleString("vi-VN")} đ cho khách.</Text> : null}
         </View>
         {detail.messages.map((m: any) => {
           const mine = m.author.id === user?.id;
@@ -165,23 +165,23 @@ export default function ComplaintsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 10, backgroundColor: "#f8fafc", flexGrow: 1 },
-  card: { backgroundColor: "#fff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 12, gap: 4, marginBottom: 8 },
+  container: { padding: 16, gap: 10, backgroundColor: "#f6f7fb", flexGrow: 1 },
+  card: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#d9dde8", padding: 12, gap: 4, marginBottom: 8 },
   title: { fontWeight: "600" },
-  body: { color: "#334155", marginTop: 4 },
-  muted: { color: "#64748b", fontSize: 12 },
+  body: { color: "#3c4461", marginTop: 4 },
+  muted: { color: "#667092", fontSize: 12 },
   sectionTitle: { fontWeight: "600", fontSize: 16 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  chip: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5 },
-  chipOn: { backgroundColor: "#2563eb", borderColor: "#2563eb" },
+  chip: { borderWidth: 1, borderColor: "#d9dde8", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5 },
+  chipOn: { backgroundColor: "#0b8c75", borderColor: "#0b8c75" },
   chipTextOn: { color: "#fff" },
-  input: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" },
-  button: { backgroundColor: "#2563eb", borderRadius: 8, paddingVertical: 10, alignItems: "center" },
+  input: { borderWidth: 1, borderColor: "#d9dde8", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, backgroundColor: "#fff" },
+  button: { backgroundColor: "#0b8c75", borderRadius: 12, paddingVertical: 10, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "600" },
-  link: { color: "#2563eb" },
+  link: { color: "#0b8c75" },
   error: { color: "#dc2626", fontSize: 13 },
-  msg: { maxWidth: "85%", borderRadius: 10, padding: 10, gap: 2 },
-  msgMine: { alignSelf: "flex-end", backgroundColor: "#2563eb" },
+  msg: { maxWidth: "85%", borderRadius: 16, padding: 10, gap: 2 },
+  msgMine: { alignSelf: "flex-end", backgroundColor: "#0b8c75" },
   msgAdmin: { alignSelf: "flex-start", backgroundColor: "#fefce8", borderWidth: 1, borderColor: "#fde68a" },
-  msgOther: { alignSelf: "flex-start", backgroundColor: "#e2e8f0" },
+  msgOther: { alignSelf: "flex-start", backgroundColor: "#d9dde8" },
 });

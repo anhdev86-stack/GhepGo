@@ -123,7 +123,7 @@ export default function EarningsScreen() {
               <Text>{TX_LABEL[t.type] ?? t.type}</Text>
               <Text style={styles.muted}>{new Date(t.createdAt).toLocaleString("vi-VN")}</Text>
             </View>
-            <Text style={{ color: Number(t.amount) < 0 ? "#dc2626" : "#15803d", fontWeight: "600" }}>
+            <Text style={{ color: Number(t.amount) < 0 ? "#dc2626" : "#0b705f", fontWeight: "600" }}>
               {Number(t.amount) > 0 ? "+" : ""}
               {vnd(t.amount)}
             </Text>
@@ -135,18 +135,18 @@ export default function EarningsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12, backgroundColor: "#f8fafc" },
-  card: { backgroundColor: "#fff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 14, gap: 8 },
+  container: { padding: 16, gap: 12, backgroundColor: "#f6f7fb" },
+  card: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#d9dde8", padding: 14, gap: 8 },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   stat: { width: "50%", paddingVertical: 4 },
   statValue: { fontSize: 16, fontWeight: "600" },
   balance: { fontSize: 28, fontWeight: "700" },
-  muted: { color: "#64748b", fontSize: 12 },
+  muted: { color: "#667092", fontSize: 12 },
   warn: { color: "#b91c1c", fontSize: 12 },
   sectionTitle: { fontWeight: "600", fontSize: 15 },
-  input: { borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8 },
-  button: { backgroundColor: "#2563eb", borderRadius: 8, paddingVertical: 10, alignItems: "center" },
+  input: { borderWidth: 1, borderColor: "#d9dde8", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8 },
+  button: { backgroundColor: "#0b8c75", borderRadius: 12, paddingVertical: 10, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "600" },
   error: { color: "#dc2626", fontSize: 13 },
-  txRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: "#f1f5f9" },
+  txRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 6, borderTopWidth: 1, borderTopColor: "#eceef4" },
 });

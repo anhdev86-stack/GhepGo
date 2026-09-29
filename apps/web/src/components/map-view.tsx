@@ -67,5 +67,5 @@ export interface MapViewProps {
  */
 export const MapView = dynamic(() => import("./map-view-inner").then((m) => m.MapViewInner), {
   ssr: false,
-  loading: () => <div className="w-full rounded-lg border bg-slate-100 animate-pulse" style={{ height: 320 }} />,
+  loading: () => <div className="w-full rounded-2xl border border-ink-200/70 bg-ink-100 animate-pulse" style={{ height: 320 }} />,
 });

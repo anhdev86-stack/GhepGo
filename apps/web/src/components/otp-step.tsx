@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api, ApiError, type OtpPurpose } from "@/lib/api";
+import { Alert, Button } from "@/components/ui";
 
 /**
  * Phone verification widget: sends a code, lets the user enter it, and hands
@@ -67,41 +68,60 @@ export function OtpStep({
     }
   };
 
+  const digits = Array.from({ length: 6 }, (_, i) => code[i] ?? "");
+
   return (
-    <form onSubmit={verify} className="flex flex-col gap-3">
-      <p className="text-sm text-slate-600">
-        {sentTo ? (
-          <>
-            Mã xác thực đã gửi tới <b>{sentTo}</b>. Nhập 6 số nhận được qua SMS.
-          </>
-        ) : (
-          "Đang gửi mã xác thực..."
-        )}
-      </p>
-      {devCode && (
-        <p className="text-xs bg-yellow-50 border border-yellow-200 rounded p-2">
-          Môi trường dev (chưa cấu hình SMS): mã của bạn là <b className="font-mono">{devCode}</b>
+    <form onSubmit={verify} className="flex flex-col gap-4">
+      <div>
+        <p className="font-semibold text-ink-900">Nhập mã xác thực</p>
+        <p className="text-sm text-ink-500 mt-0.5">
+          {sentTo ? (
+            <>
+              Mã 6 số đã gửi qua SMS tới <b className="text-ink-800">{sentTo}</b>.
+            </>
+          ) : (
+            "Đang gửi mã xác thực..."
+          )}
         </p>
+      </div>
+      {devCode && (
+        <Alert tone="amber">
+          Môi trường dev (chưa cấu hình SMS): mã của bạn là <b className="font-mono">{devCode}</b>
+        </Alert>
       )}
-      <input
-        className="border rounded px-3 py-2 text-center text-lg tracking-[0.5em] font-mono"
-        placeholder="______"
-        inputMode="numeric"
-        maxLength={6}
-        value={code}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-        autoFocus
-        required
-      />
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      <button type="submit" disabled={busy || code.length !== 6} className="bg-blue-600 text-white rounded px-3 py-2 disabled:opacity-50">
-        {busy ? "Đang kiểm tra..." : "Xác nhận"}
-      </button>
+      <label className="relative block cursor-text">
+        <div className="grid grid-cols-6 gap-2">
+          {digits.map((d, i) => (
+            <span
+              key={i}
+              className={`h-12 rounded-xl border bg-white flex items-center justify-center text-xl font-semibold font-mono ${
+                i === code.length ? "border-brand-500 ring-4 ring-brand-500/15" : "border-ink-200"
+              }`}
+            >
+              {d}
+            </span>
+          ))}
+        </div>
+        <input
+          className="absolute inset-0 opacity-0"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          autoFocus
+          required
+        />
+      </label>
+      {error && <Alert>{error}</Alert>}
+      <Button type="submit" size="lg" loading={busy} disabled={code.length !== 6} className="w-full">
+        Xác nhận
+      </Button>
       <div className="flex justify-between text-sm">
-        <button type="button" onClick={onBack} className="text-slate-500 underline">
+        <button type="button" onClick={onBack} className="text-ink-500 hover:text-ink-800">
           Đổi số điện thoại
         </button>
-        <button type="button" onClick={send} disabled={busy || cooldown > 0} className="text-blue-600 underline disabled:text-slate-400 disabled:no-underline">
+        <button type="button" onClick={send} disabled={busy || cooldown > 0} className="link disabled:text-ink-400 disabled:no-underline">
           {cooldown > 0 ? `Gửi lại sau ${cooldown}s` : "Gửi lại mã"}
         </button>
       </div>

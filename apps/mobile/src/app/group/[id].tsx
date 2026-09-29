@@ -91,7 +91,7 @@ export default function GroupScreen() {
   if (!group) {
     return (
       <View style={styles.center}>
-        <ActivityIndicator size="large" color="#2563eb" />
+        <ActivityIndicator size="large" color="#0b8c75" />
       </View>
     );
   }
@@ -131,8 +131,8 @@ export default function GroupScreen() {
           return (
             <View key={s.id} style={[styles.stopRow, current && styles.stopCurrent]}>
               <Text style={[styles.stopIndex, done && styles.done]}>{i + 1}</Text>
-              <View style={[styles.badge, { backgroundColor: s.kind === "PICKUP" ? "#dcfce7" : "#ffedd5" }]}>
-                <Text style={{ color: s.kind === "PICKUP" ? "#15803d" : "#c2410c", fontSize: 11 }}>
+              <View style={[styles.badge, { backgroundColor: s.kind === "PICKUP" ? "#d5f7ec" : "#ffedd5" }]}>
+                <Text style={{ color: s.kind === "PICKUP" ? "#0b705f" : "#c2410c", fontSize: 11 }}>
                   {s.kind === "PICKUP" ? "Đón" : "Trả"}
                 </Text>
               </View>
@@ -159,18 +159,18 @@ export default function GroupScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 12, backgroundColor: "#f8fafc" },
+  container: { padding: 16, gap: 12, backgroundColor: "#f6f7fb" },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   status: { fontSize: 18, fontWeight: "700" },
-  muted: { color: "#64748b", fontSize: 13 },
-  card: { backgroundColor: "#fff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 8 },
-  stopRow: { flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderRadius: 8 },
-  stopCurrent: { backgroundColor: "#eff6ff" },
+  muted: { color: "#667092", fontSize: 13 },
+  card: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#d9dde8", padding: 8 },
+  stopRow: { flexDirection: "row", alignItems: "center", gap: 8, padding: 8, borderRadius: 12 },
+  stopCurrent: { backgroundColor: "#effcf8" },
   stopIndex: { width: 20, textAlign: "right", fontWeight: "600" },
   badge: { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   stopAddress: { fontSize: 14 },
-  done: { color: "#94a3b8", textDecorationLine: "line-through" },
-  button: { backgroundColor: "#16a34a", borderRadius: 8, paddingVertical: 12, alignItems: "center" },
+  done: { color: "#8d97b0", textDecorationLine: "line-through" },
+  button: { backgroundColor: "#0b8c75", borderRadius: 12, paddingVertical: 12, alignItems: "center" },
   buttonText: { color: "#fff", fontWeight: "600" },
   error: { color: "#dc2626", fontSize: 13 },
 });

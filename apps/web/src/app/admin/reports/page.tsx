@@ -5,9 +5,15 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
 import { parsePolygonInput, ZonePolygonEditor } from "@/components/zone-polygon-editor";
+import { Alert, Badge, Button, Card, CardTitle, EmptyState, Field, Icon, Input, PageHeader, Select, Stat, type Tone } from "@/components/ui";
 
 const vnd = (n: unknown) => Number(n).toLocaleString("vi-VN") + " đ";
-const W_LABEL: Record<string, string> = { REQUESTED: "Chờ duyệt", APPROVED: "Đã duyệt", PAID: "Đã chuyển", REJECTED: "Từ chối" };
+const W_STATUS: Record<string, { label: string; tone: Tone }> = {
+  REQUESTED: { label: "Chờ duyệt", tone: "amber" },
+  APPROVED: { label: "Đã duyệt", tone: "blue" },
+  PAID: { label: "Đã chuyển", tone: "green" },
+  REJECTED: { label: "Từ chối", tone: "red" },
+};
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
 export default function ReportsPage() {
@@ -54,123 +60,161 @@ export default function ReportsPage() {
   };
 
   const maxDay = Math.max(1, ...(ov?.daily.map((d: any) => d.fare) ?? [1]));
-  const zoneRings = zones
-    .filter((z) => z.polygon?.coordinates?.[0])
-    .map((z) => ({ id: z.id, name: z.name, ring: z.polygon.coordinates[0].map(([lng, lat]: [number, number]) => ({ lat, lng })) }));
+  const zoneRings = zones.filter((z) => z.polygon?.coordinates?.[0]).map((z) => ({ id: z.id, name: z.name, ring: z.polygon.coordinates[0].map(([lng, lat]: [number, number]) => ({ lat, lng })) }));
+  const pendingW = withdrawals.filter((w) => w.status === "REQUESTED").length;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Báo cáo vận hành</h1>
-        <div className="flex gap-2 items-center text-sm">
-          <input type="date" className="border rounded px-2 py-1" value={from} onChange={(e) => setFrom(e.target.value)} />
-          <span>→</span>
-          <input type="date" className="border rounded px-2 py-1" value={to} onChange={(e) => setTo(e.target.value)} />
-        </div>
-      </div>
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+    <div>
+      <PageHeader
+        eyebrow="Quản trị"
+        title="Báo cáo vận hành"
+        description="Doanh thu, đối soát, rút tiền và khu vực phục vụ."
+        action={
+          <div className="flex items-center gap-2 text-sm">
+            <Input type="date" className="py-1.5 w-auto" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <span className="text-ink-400">→</span>
+            <Input type="date" className="py-1.5 w-auto" value={to} onChange={(e) => setTo(e.target.value)} />
+          </div>
+        }
+      />
+      {error && <Alert className="mb-4">{error}</Alert>}
 
       {ov && (
         <>
-          <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-            {[
-              ["Chuyến hoàn thành", ov.trips.completed],
-              ["Doanh thu gộp", vnd(ov.revenue.grossFare)],
-              ["Phí nền tảng", vnd(ov.revenue.platformCommission)],
-              ["Trả tài xế", vnd(ov.revenue.driverPayout)],
-              ["Km phục vụ", ov.trips.distanceKm],
-              ["Huỷ", ov.trips.byStatus.CANCELLED ?? 0],
-              ["Xe ghép / bao xe", `${ov.trips.byType.SHARED?.count ?? 0} / ${ov.trips.byType.PRIVATE?.count ?? 0}`],
-              ["Tài xế trực / chạy", `${ov.fleet.AVAILABLE ?? 0} / ${ov.fleet.ON_TRIP ?? 0}`],
-              ["Khiếu nại đang mở", ov.openComplaints ?? 0],
-            ].map(([label, value]) => (
-              <div key={String(label)} className="bg-white p-3 rounded-lg border">
-                <p className="text-slate-500">{label}</p>
-                <p className="text-lg font-medium">{value as string}</p>
-              </div>
-            ))}
-          </section>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+            <Stat label="Doanh thu gộp" value={vnd(ov.revenue.grossFare)} icon={<Icon.chart className="h-5 w-5" />} tone="brand" />
+            <Stat label="Phí nền tảng" value={vnd(ov.revenue.platformCommission)} icon={<Icon.wallet className="h-5 w-5" />} tone="green" />
+            <Stat label="Trả tài xế" value={vnd(ov.revenue.driverPayout)} icon={<Icon.users className="h-5 w-5" />} tone="blue" />
+            <Stat label="Chuyến hoàn thành" value={ov.trips.completed} hint={`${ov.trips.byStatus.CANCELLED ?? 0} huỷ · ${ov.trips.distanceKm} km`} icon={<Icon.route className="h-5 w-5" />} tone="amber" />
+          </div>
 
-          <section className="bg-white p-4 rounded-lg border">
-            <h2 className="font-medium mb-2">Doanh thu theo ngày</h2>
-            {ov.daily.length === 0 && <p className="text-sm text-slate-500">Không có chuyến hoàn thành trong khoảng này.</p>}
-            <div className="flex flex-col gap-1 text-xs">
-              {ov.daily.map((d: any) => (
-                <div key={d.day} className="flex items-center gap-2">
-                  <span className="w-20 text-slate-500">{new Date(d.day).toLocaleDateString("vi-VN")}</span>
-                  <div className="flex-1 bg-slate-100 rounded h-4">
-                    <div className="bg-blue-500 h-4 rounded" style={{ width: `${(d.fare / maxDay) * 100}%` }} />
+          <div className="grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] gap-5 mb-5">
+            <Card>
+              <CardTitle description={`Xe ghép ${ov.trips.byType.SHARED?.count ?? 0} · bao xe ${ov.trips.byType.PRIVATE?.count ?? 0} · tài xế trực/chạy ${ov.fleet.AVAILABLE ?? 0}/${ov.fleet.ON_TRIP ?? 0} · khiếu nại mở ${ov.openComplaints ?? 0}`}>Doanh thu theo ngày</CardTitle>
+              {ov.daily.length === 0 && <EmptyState icon={<Icon.chart className="h-6 w-6" />} title="Không có chuyến hoàn thành" description="Chọn khoảng thời gian khác." />}
+              <div className="flex flex-col gap-1.5 text-xs">
+                {ov.daily.map((d: any) => (
+                  <div key={d.day} className="flex items-center gap-3">
+                    <span className="w-16 text-ink-500 tabular-nums">{new Date(d.day).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" })}</span>
+                    <div className="flex-1 bg-ink-100 rounded-full h-2.5 overflow-hidden">
+                      <div className="bg-brand-500 h-full rounded-full" style={{ width: `${(d.fare / maxDay) * 100}%` }} />
+                    </div>
+                    <span className="w-24 text-right font-medium text-ink-800 tabular-nums">{vnd(d.fare)}</span>
+                    <span className="w-12 text-right text-ink-400 tabular-nums">{d.trips} ch.</span>
                   </div>
-                  <span className="w-28 text-right">{vnd(d.fare)}</span>
-                  <span className="w-14 text-right text-slate-500">{d.trips} ch.</span>
-                </div>
-              ))}
+                ))}
+              </div>
+            </Card>
+
+            <div className="flex flex-col gap-5">
+              <Card>
+                <CardTitle>Đối soát thanh toán</CardTitle>
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Phương thức</th>
+                      <th>Trạng thái</th>
+                      <th className="text-right">Chuyến</th>
+                      <th className="text-right">Số tiền</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ov.revenue.payments.map((p: any) => (
+                      <tr key={`${p.method}-${p.status}`}>
+                        <td className="text-ink-800">{p.method === "WALLET" ? "Ví" : "Tiền mặt"}</td>
+                        <td>
+                          <Badge tone={p.status === "PAID" ? "green" : "amber"}>{p.status === "PAID" ? "Đã thu" : "Chờ xác nhận"}</Badge>
+                        </td>
+                        <td className="text-right tabular-nums">{p.count}</td>
+                        <td className="text-right font-medium tabular-nums">{vnd(p.amount)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Card>
+              <Card>
+                <CardTitle>Top tài xế</CardTitle>
+                <ol className="divide-y divide-ink-100 text-sm">
+                  {ov.topDrivers.length === 0 && <li className="py-2 text-ink-500">Chưa có dữ liệu.</li>}
+                  {ov.topDrivers.map((d: any, i: number) => (
+                    <li key={d.driverId} className="py-2.5 flex items-center gap-3">
+                      <span className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold ${i === 0 ? "bg-amber-100 text-amber-800" : "bg-ink-100 text-ink-600"}`}>{i + 1}</span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-medium text-ink-900 truncate">{d.fullName}</span>
+                        <span className="text-xs text-ink-500">{d.trips} chuyến · {d.ratingAvg} ★</span>
+                      </span>
+                      <span className="font-semibold text-ink-900 tabular-nums">{vnd(d.fare)}</span>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
             </div>
-          </section>
-
-          <section className="bg-white p-4 rounded-lg border">
-            <h2 className="font-medium mb-2">Đối soát thanh toán</h2>
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th>Phương thức</th><th>Trạng thái</th><th>Số chuyến</th><th>Số tiền</th></tr></thead>
-              <tbody>
-                {ov.revenue.payments.map((p: any) => (
-                  <tr key={`${p.method}-${p.status}`} className="border-t">
-                    <td>{p.method === "WALLET" ? "Ví" : "Tiền mặt"}</td>
-                    <td>{p.status === "PAID" ? "Đã thu" : "Chờ xác nhận"}</td>
-                    <td>{p.count}</td>
-                    <td>{vnd(p.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-
-          <section className="bg-white p-4 rounded-lg border">
-            <h2 className="font-medium mb-2">Top tài xế</h2>
-            <table className="w-full text-sm">
-              <thead><tr className="text-left text-slate-500"><th>Tài xế</th><th>Chuyến</th><th>Doanh thu</th><th>Đánh giá</th></tr></thead>
-              <tbody>
-                {ov.topDrivers.map((d: any) => (
-                  <tr key={d.driverId} className="border-t"><td>{d.fullName}</td><td>{d.trips}</td><td>{vnd(d.fare)}</td><td>{d.ratingAvg} ★</td></tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+          </div>
         </>
       )}
 
-      <section className="bg-white p-4 rounded-lg border">
-        <h2 className="font-medium mb-2">Yêu cầu rút tiền ({withdrawals.filter((w) => w.status === "REQUESTED").length} chờ duyệt)</h2>
-        {withdrawals.length === 0 && <p className="text-sm text-slate-500">Chưa có yêu cầu.</p>}
-        <table className="w-full text-sm">
-          <tbody>
-            {withdrawals.map((w) => (
-              <tr key={w.id} className="border-t">
-                <td className="py-1">{w.driver?.user?.fullName} · {w.driver?.user?.phone}</td>
-                <td>{w.bankName} {w.bankAccount}</td>
-                <td>{vnd(w.amount)}</td>
-                <td>{W_LABEL[w.status] ?? w.status}</td>
-                <td className="text-right space-x-1">
-                  {w.status === "REQUESTED" && (
-                    <>
-                      <button className="text-green-700 underline" onClick={() => run(() => api.resolveWithdrawal(token!, w.id, { status: "APPROVED" }))}>Duyệt</button>
-                      <button className="text-red-600 underline" onClick={() => run(() => api.resolveWithdrawal(token!, w.id, { status: "REJECTED", note: prompt("Lý do từ chối") ?? undefined }))}>Từ chối</button>
-                    </>
-                  )}
-                  {w.status === "APPROVED" && (
-                    <button className="text-blue-700 underline" onClick={() => run(() => api.resolveWithdrawal(token!, w.id, { status: "PAID" }))}>Đã chuyển khoản</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+      <Card className="mb-5">
+        <CardTitle action={pendingW > 0 ? <Badge tone="amber">{pendingW} chờ duyệt</Badge> : undefined}>Yêu cầu rút tiền</CardTitle>
+        {withdrawals.length === 0 && <EmptyState title="Chưa có yêu cầu rút tiền" />}
+        {withdrawals.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Tài xế</th>
+                  <th>Ngân hàng</th>
+                  <th className="text-right">Số tiền</th>
+                  <th>Trạng thái</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {withdrawals.map((w) => {
+                  const st = W_STATUS[w.status] ?? { label: w.status, tone: "slate" as Tone };
+                  return (
+                    <tr key={w.id}>
+                      <td>
+                        <span className="block font-medium text-ink-900">{w.driver?.user?.fullName}</span>
+                        <span className="text-xs text-ink-500">{w.driver?.user?.phone} · {new Date(w.createdAt).toLocaleDateString("vi-VN")}</span>
+                      </td>
+                      <td className="text-ink-600">
+                        {w.bankName} <span className="font-mono">{w.bankAccount}</span>
+                      </td>
+                      <td className="text-right font-semibold tabular-nums">{vnd(w.amount)}</td>
+                      <td>
+                        <Badge tone={st.tone}>{st.label}</Badge>
+                        {w.note && <span className="block text-xs text-ink-400 mt-0.5">{w.note}</span>}
+                      </td>
+                      <td className="text-right whitespace-nowrap">
+                        {w.status === "REQUESTED" && (
+                          <span className="inline-flex gap-1.5">
+                            <Button size="sm" onClick={() => run(() => api.resolveWithdrawal(token!, w.id, { status: "APPROVED" }))}>Duyệt</Button>
+                            <Button size="sm" variant="secondary" className="text-red-600" onClick={() => run(() => api.resolveWithdrawal(token!, w.id, { status: "REJECTED", note: prompt("Lý do từ chối") ?? undefined }))}>
+                              Từ chối
+                            </Button>
+                          </span>
+                        )}
+                        {w.status === "APPROVED" && (
+                          <Button size="sm" variant="soft" onClick={() => run(() => api.resolveWithdrawal(token!, w.id, { status: "PAID" }))}>
+                            Đã chuyển khoản
+                          </Button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
-      <section className="bg-white p-4 rounded-lg border">
-        <h2 className="font-medium mb-2">Khu vực hoạt động</h2>
+      <Card className="mb-5">
+        <CardTitle description="Đa giác (PostGIS) hoặc hình tròn tâm + bán kính; điểm thuộc khu vực nhỏ nhất chứa nó. Điểm đón ngoài mọi khu vực đang hoạt động sẽ không đặt được xe; khách chỉ ghép chung nhóm trong cùng khu vực.">
+          Khu vực hoạt động
+        </CardTitle>
         <form
-          className="flex flex-wrap gap-2 mb-3"
+          className="rounded-2xl border border-dashed border-ink-200 p-4 mb-4"
           onSubmit={(e) => {
             e.preventDefault();
             const parsed = parsePolygonInput(zone.polygonText);
@@ -181,122 +225,165 @@ export default function ReportsPage() {
             run(async () => {
               await api.createZone(token!, {
                 name: zone.name,
-                ...(parsed.ring
-                  ? { polygon: { type: "Polygon", coordinates: [parsed.ring] } }
-                  : { centerLat: Number(zone.centerLat), centerLng: Number(zone.centerLng), radiusKm: Number(zone.radiusKm) }),
+                ...(parsed.ring ? { polygon: { type: "Polygon", coordinates: [parsed.ring] } } : { centerLat: Number(zone.centerLat), centerLng: Number(zone.centerLng), radiusKm: Number(zone.radiusKm) }),
               });
               setZone({ ...zone, name: "", polygonText: "" });
               setDrawNew(false);
             });
           }}
         >
-          <input className="border rounded px-2 py-1 text-sm" placeholder="Tên khu vực" value={zone.name} onChange={(e) => setZone({ ...zone, name: e.target.value })} required />
-          <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Lat" value={zone.centerLat} onChange={(e) => setZone({ ...zone, centerLat: e.target.value })} />
-          <input className="border rounded px-2 py-1 text-sm w-24" placeholder="Lng" value={zone.centerLng} onChange={(e) => setZone({ ...zone, centerLng: e.target.value })} />
-          <input className="border rounded px-2 py-1 text-sm w-20" placeholder="Bán kính km" value={zone.radiusKm} onChange={(e) => setZone({ ...zone, radiusKm: e.target.value })} />
-          <button className="bg-blue-600 text-white rounded px-3 py-1 text-sm">Thêm khu vực</button>
-          <button type="button" className={`rounded px-3 py-1 text-sm border ${drawNew ? "bg-slate-700 text-white" : "text-slate-700"}`} onClick={() => setDrawNew((v) => !v)}>
-            {drawNew ? "Ẩn bản đồ" : "Vẽ đa giác trên bản đồ"}
-          </button>
+          <div className="grid sm:grid-cols-[1.5fr_1fr_1fr_0.8fr_auto_auto] gap-2 items-end">
+            <Field label="Tên khu vực">
+              <Input placeholder="Quận 1" value={zone.name} onChange={(e) => setZone({ ...zone, name: e.target.value })} required />
+            </Field>
+            <Field label="Tâm (lat)">
+              <Input value={zone.centerLat} onChange={(e) => setZone({ ...zone, centerLat: e.target.value })} />
+            </Field>
+            <Field label="Tâm (lng)">
+              <Input value={zone.centerLng} onChange={(e) => setZone({ ...zone, centerLng: e.target.value })} />
+            </Field>
+            <Field label="Bán kính km">
+              <Input value={zone.radiusKm} onChange={(e) => setZone({ ...zone, radiusKm: e.target.value })} />
+            </Field>
+            <Button type="button" variant={drawNew ? "dark" : "secondary"} onClick={() => setDrawNew((v) => !v)}>
+              <Icon.map className="h-4 w-4" />
+              {drawNew ? "Ẩn bản đồ" : "Vẽ đa giác"}
+            </Button>
+            <Button type="submit">Thêm khu vực</Button>
+          </div>
           {drawNew && (
-            <div className="w-full">
-              <ZonePolygonEditor
-                token={token}
-                initial={null}
-                center={{ lat: Number(zone.centerLat) || 10.7769, lng: Number(zone.centerLng) || 106.7009 }}
-                otherZones={zoneRings}
-                onChange={(text) => setZone((z) => ({ ...z, polygonText: text }))}
-              />
-              <p className="text-xs text-slate-500 mt-1">Có đa giác thì tâm/bán kính bên trên bị bỏ qua; khu vực khác hiển thị màu xám để tránh chồng lấn.</p>
+            <div className="mt-4">
+              <ZonePolygonEditor token={token} initial={null} center={{ lat: Number(zone.centerLat) || 10.7769, lng: Number(zone.centerLng) || 106.7009 }} otherZones={zoneRings} onChange={(text) => setZone((z) => ({ ...z, polygonText: text }))} />
+              <p className="text-xs text-ink-500 mt-2">Có đa giác thì tâm/bán kính bị bỏ qua; khu vực khác hiện màu xám để tránh chồng lấn.</p>
             </div>
           )}
         </form>
-        <table className="w-full text-sm mb-3">
-          <thead><tr className="text-left text-slate-500"><th>Khu vực</th><th>Hình dạng</th><th>Bán kính</th><th>Tài xế</th><th>Trạng thái</th><th></th></tr></thead>
-          <tbody>
-            {zones.map((z) => (
-              <Fragment key={z.id}>
-              <tr className="border-t">
-                <td className="py-1">{z.name}</td>
-                <td>
-                  <button className="underline text-blue-700" onClick={() => setEditingZone(editingZone === z.id ? null : z.id)}>
-                    {z.polygon ? `Đa giác · ${Number(z.areaKm2).toFixed(1)} km²` : "Hình tròn"} {editingZone === z.id ? "▲" : "▼"}
-                  </button>
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    className="border rounded px-1 py-0.5 w-16"
-                    defaultValue={z.radiusKm}
-                    min={0.5}
-                    step={0.5}
-                    onBlur={(e) => Number(e.target.value) !== z.radiusKm && run(() => api.updateZone(token!, z.id, { radiusKm: Number(e.target.value) }))}
-                  />{" "}
-                  km
-                </td>
-                <td>{z._count?.drivers ?? 0}</td>
-                <td>
-                  <button className={z.isActive ? "text-green-700 underline" : "text-slate-500 underline"} onClick={() => run(() => api.updateZone(token!, z.id, { isActive: !z.isActive }))}>
-                    {z.isActive ? "Đang hoạt động" : "Tạm dừng"}
-                  </button>
-                </td>
-                <td className="text-right">
-                  <button className="text-red-600 underline" onClick={() => confirm(`Xoá khu vực ${z.name}?`) && run(() => api.deleteZone(token!, z.id))}>Xoá</button>
-                </td>
+
+        <div className="overflow-x-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Khu vực</th>
+                <th>Hình dạng</th>
+                <th>Bán kính</th>
+                <th className="text-right">Tài xế</th>
+                <th>Trạng thái</th>
+                <th></th>
               </tr>
-              {editingZone === z.id && (
-                <tr className="bg-slate-50">
-                  <td colSpan={6} className="p-3">
-                    <ZonePolygonEditor
-                      token={token}
-                      initial={z.polygon?.coordinates?.[0] ?? null}
-                      center={{ lat: z.centerLat, lng: z.centerLng }}
-                      otherZones={zoneRings.filter((r) => r.id !== z.id)}
-                      onSave={(ring) => run(() => api.updateZone(token!, z.id, { polygon: { type: "Polygon", coordinates: [ring] } }))}
-                      onClear={() => run(() => api.updateZone(token!, z.id, { polygon: null }))}
-                    />
-                  </td>
+            </thead>
+            <tbody>
+              {zones.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="text-center text-ink-500 py-6">Chưa có khu vực nào — hệ thống phục vụ mọi nơi.</td>
                 </tr>
               )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-        <p className="text-xs text-slate-500 mb-3">
-          Khu vực có đa giác dùng đa giác (PostGIS), chưa có thì dùng hình tròn tâm + bán kính; điểm thuộc khu vực nhỏ nhất chứa nó.
-          Điểm đón ngoài mọi khu vực đang hoạt động sẽ không đặt được xe; khách chỉ ghép chung nhóm trong cùng khu vực;
-          tài xế đã gán khu vực chỉ thấy chuyến trong khu vực đó, tài xế chưa gán nhận mọi khu vực.
-        </p>
+              {zones.map((z) => (
+                <Fragment key={z.id}>
+                  <tr>
+                    <td className="font-medium text-ink-900">{z.name}</td>
+                    <td>
+                      <button className="link" onClick={() => setEditingZone(editingZone === z.id ? null : z.id)}>
+                        {z.polygon ? `Đa giác · ${Number(z.areaKm2).toFixed(1)} km²` : "Hình tròn"} {editingZone === z.id ? "▲" : "▼"}
+                      </button>
+                    </td>
+                    <td>
+                      <span className="inline-flex items-center gap-1">
+                        <Input type="number" className="py-1 w-20 text-sm" defaultValue={z.radiusKm} min={0.5} step={0.5} onBlur={(e) => Number(e.target.value) !== z.radiusKm && run(() => api.updateZone(token!, z.id, { radiusKm: Number(e.target.value) }))} />
+                        <span className="text-xs text-ink-500">km</span>
+                      </span>
+                    </td>
+                    <td className="text-right tabular-nums">{z._count?.drivers ?? 0}</td>
+                    <td>
+                      <button onClick={() => run(() => api.updateZone(token!, z.id, { isActive: !z.isActive }))}>
+                        <Badge tone={z.isActive ? "green" : "slate"} dot>
+                          {z.isActive ? "Đang hoạt động" : "Tạm dừng"}
+                        </Badge>
+                      </button>
+                    </td>
+                    <td className="text-right">
+                      <button className="text-xs text-red-600 hover:underline" onClick={() => confirm(`Xoá khu vực ${z.name}?`) && run(() => api.deleteZone(token!, z.id))}>
+                        Xoá
+                      </button>
+                    </td>
+                  </tr>
+                  {editingZone === z.id && (
+                    <tr>
+                      <td colSpan={6} className="bg-ink-50/60 p-4">
+                        <ZonePolygonEditor
+                          token={token}
+                          initial={z.polygon?.coordinates?.[0] ?? null}
+                          center={{ lat: z.centerLat, lng: z.centerLng }}
+                          otherZones={zoneRings.filter((r) => r.id !== z.id)}
+                          onSave={(ring) => run(() => api.updateZone(token!, z.id, { polygon: { type: "Polygon", coordinates: [ring] } }))}
+                          onClear={() => run(() => api.updateZone(token!, z.id, { polygon: null }))}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
         {zoneStats.length > 0 && (
-          <table className="w-full text-sm mb-3">
-            <thead><tr className="text-left text-slate-500"><th>Thống kê theo khu vực</th><th>Yêu cầu</th><th>Hoàn thành</th><th>Huỷ</th><th>Doanh thu</th><th>Tài xế (trực)</th></tr></thead>
+          <div className="mt-5 overflow-x-auto">
+            <h3 className="text-sm font-semibold text-ink-900 mb-2">Thống kê theo khu vực</h3>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Khu vực</th>
+                  <th className="text-right">Yêu cầu</th>
+                  <th className="text-right">Hoàn thành</th>
+                  <th className="text-right">Huỷ</th>
+                  <th className="text-right">Doanh thu</th>
+                  <th className="text-right">Tài xế (trực)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {zoneStats.map((z) => (
+                  <tr key={z.id ?? "none"}>
+                    <td className="font-medium text-ink-900">{z.name}</td>
+                    <td className="text-right tabular-nums">{z.requested}</td>
+                    <td className="text-right tabular-nums">{z.completed}</td>
+                    <td className="text-right tabular-nums">{z.cancelled}</td>
+                    <td className="text-right tabular-nums font-medium">{vnd(z.grossFare)}</td>
+                    <td className="text-right tabular-nums">
+                      {z.drivers} ({z.driversOnline})
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <CardTitle description="Tài xế đã gán chỉ thấy và nhận chuyến trong khu vực đó; chưa gán thì nhận mọi khu vực.">Gán tài xế vào khu vực</CardTitle>
+        <div className="overflow-x-auto">
+          <table className="table">
             <tbody>
-              {zoneStats.map((z) => (
-                <tr key={z.id ?? "none"} className="border-t">
-                  <td className="py-1">{z.name}</td><td>{z.requested}</td><td>{z.completed}</td><td>{z.cancelled}</td><td>{vnd(z.grossFare)}</td><td>{z.drivers} ({z.driversOnline})</td>
+              {drivers.map((d) => (
+                <tr key={d.id}>
+                  <td className="font-medium text-ink-900">{d.user?.fullName}</td>
+                  <td className="text-ink-500 text-xs">{d.user?.phone}</td>
+                  <td className="text-right">
+                    <Select className="py-1.5 w-56 inline-block text-sm" value={d.zoneId ?? ""} onChange={(e) => run(() => api.assignZone(token!, d.id, e.target.value || null))}>
+                      <option value="">— mọi khu vực —</option>
+                      {zones.map((z) => (
+                        <option key={z.id} value={z.id}>
+                          {z.name}
+                        </option>
+                      ))}
+                    </Select>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
-        <h3 className="text-sm font-medium mb-1">Gán tài xế vào khu vực</h3>
-        <table className="w-full text-sm">
-          <tbody>
-            {drivers.map((d) => (
-              <tr key={d.id} className="border-t">
-                <td className="py-1">{d.user?.fullName}</td>
-                <td>{d.status}</td>
-                <td>
-                  <select className="border rounded px-1 py-0.5" value={d.zoneId ?? ""} onChange={(e) => run(() => api.assignZone(token!, d.id, e.target.value || null))}>
-                    <option value="">— chưa gán —</option>
-                    {zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
-                  </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+        </div>
+      </Card>
     </div>
   );
 }

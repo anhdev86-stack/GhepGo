@@ -218,6 +218,11 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 
 ## 3. Web app (`apps/web`)
 
+Giao diện dùng hệ thống thiết kế riêng (`src/app/globals.css` + `src/components/ui.tsx`): font Be Vietnam Pro, token màu
+thương hiệu (`brand-*` teal, `ink-*` navy, `accent-*`) khai báo bằng `@theme` của Tailwind v4, primitives `.btn/.input/.card/.badge/.table`
+trong `@layer components`, component `Button/Card/Field/Segmented/Badge/Stat/EmptyState/PageHeader`, logo SVG, thanh điều hướng
+responsive có menu di động, trang chủ dạng landing. App tài xế dùng cùng token trong `apps/mobile/src/theme.ts`.
+
 ```bash
 cd apps/web
 pnpm dev

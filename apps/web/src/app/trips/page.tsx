@@ -6,26 +6,56 @@ import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
 import { useNow, useRealtime, useSocketEvent, WS, type DriverLocation } from "@/lib/realtime";
 import { TripMap } from "@/components/trip-map";
+import { Alert, Avatar, Badge, Button, Card, EmptyState, Icon, LinkButton, LiveDot, PageHeader, RouteLine, type Tone } from "@/components/ui";
 
-const STATUS_LABEL: Record<string, string> = {
-  REQUESTED: "Đang tìm tài xế",
-  ASSIGNED: "Đã ghép nhóm, đang tìm tài xế",
-  ACCEPTED: "Tài xế đã nhận",
-  EN_ROUTE_TO_PICKUP: "Tài xế đang tới đón",
-  IN_PROGRESS: "Đang di chuyển",
-  COMPLETED: "Hoàn thành",
-  CANCELLED: "Đã huỷ",
+const STATUS: Record<string, { label: string; tone: Tone }> = {
+  REQUESTED: { label: "Đang tìm tài xế", tone: "amber" },
+  ASSIGNED: { label: "Đã ghép nhóm, đang tìm tài xế", tone: "amber" },
+  ACCEPTED: { label: "Tài xế đã nhận", tone: "blue" },
+  EN_ROUTE_TO_PICKUP: { label: "Tài xế đang tới đón", tone: "blue" },
+  IN_PROGRESS: { label: "Đang di chuyển", tone: "brand" },
+  COMPLETED: { label: "Hoàn thành", tone: "green" },
+  CANCELLED: { label: "Đã huỷ", tone: "slate" },
 };
 
+const STEPS = ["REQUESTED", "ACCEPTED", "EN_ROUTE_TO_PICKUP", "IN_PROGRESS", "COMPLETED"];
+const STEP_LABEL = ["Đặt xe", "Đã nhận", "Đang tới", "Trên xe", "Hoàn thành"];
 const ACTIVE = ["REQUESTED", "ASSIGNED", "ACCEPTED", "EN_ROUTE_TO_PICKUP", "IN_PROGRESS"];
 const CANCELLABLE = ["REQUESTED", "ASSIGNED", "ACCEPTED", "EN_ROUTE_TO_PICKUP"];
+const vnd = (n: unknown) => Number(n).toLocaleString("vi-VN") + " đ";
+
+function Stepper({ status }: { status: string }) {
+  const idx = status === "ASSIGNED" ? 0 : STEPS.indexOf(status);
+  if (idx < 0) return null;
+  return (
+    <ol className="flex items-center gap-1 sm:gap-2 text-[11px]">
+      {STEPS.map((s, i) => {
+        const done = i < idx;
+        const current = i === idx;
+        return (
+          <li key={s} className="flex items-center gap-1 sm:gap-2 flex-1 last:flex-none">
+            <span
+              className={`h-6 w-6 shrink-0 rounded-full flex items-center justify-center font-semibold ${
+                done ? "bg-brand-600 text-white" : current ? "bg-brand-100 text-brand-800 ring-4 ring-brand-500/15" : "bg-ink-100 text-ink-400"
+              }`}
+            >
+              {done ? <Icon.check className="h-3.5 w-3.5" /> : i + 1}
+            </span>
+            <span className={`hidden sm:inline ${current ? "text-ink-900 font-medium" : "text-ink-500"}`}>{STEP_LABEL[i]}</span>
+            {i < STEPS.length - 1 && <span className={`h-px flex-1 ${done ? "bg-brand-500" : "bg-ink-200"}`} />}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
 
 export default function TripsPage() {
   const { token, user, isLoading } = useAuth();
   const router = useRouter();
   const { socket, connected } = useRealtime(token);
   const now = useNow();
-  const [trips, setTrips] = useState<any[]>([]);
+  const [trips, setTrips] = useState<any[] | null>(null);
   const [locations, setLocations] = useState<Record<string, DriverLocation>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -42,7 +72,7 @@ export default function TripsPage() {
 
   // Join the room of every active trip so we receive its driver's GPS.
   useEffect(() => {
-    if (!socket) return;
+    if (!socket || !trips) return;
     for (const t of trips) {
       if (ACTIVE.includes(t.status)) socket.emit(WS.SUBSCRIBE_TRIP, { tripId: t.id });
     }
@@ -50,9 +80,7 @@ export default function TripsPage() {
 
   useSocketEvent(socket, WS.TRIP_UPDATED, load);
   useSocketEvent(socket, WS.GROUP_UPDATED, load);
-  useSocketEvent<DriverLocation>(socket, WS.DRIVER_LOCATION, (loc) =>
-    setLocations((prev) => ({ ...prev, [loc.driverId]: loc })),
-  );
+  useSocketEvent<DriverLocation>(socket, WS.DRIVER_LOCATION, (loc) => setLocations((prev) => ({ ...prev, [loc.driverId]: loc })));
 
   if (!isLoading && (!user || user.role !== "CUSTOMER")) {
     if (typeof window !== "undefined") router.push("/login");
@@ -83,105 +111,157 @@ export default function TripsPage() {
     }
   };
 
+  const active = (trips ?? []).filter((t) => ACTIVE.includes(t.status));
+  const past = (trips ?? []).filter((t) => !ACTIVE.includes(t.status));
+
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Chuyến của tôi</h1>
-        <span className={`text-xs px-2 py-1 rounded-full ${connected ? "bg-green-100 text-green-700" : "bg-slate-200 text-slate-600"}`}>
-          {connected ? "Cập nhật trực tiếp" : "Mất kết nối realtime"}
-        </span>
-      </div>
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      {trips.length === 0 && <p className="text-slate-500">Chưa có chuyến đi nào.</p>}
-      {trips.map((trip) => {
-        const loc = trip.driverId ? locations[trip.driverId] : undefined;
-        const group = trip.group;
-        const myStops = group?.stops?.filter((s: any) => s.tripId === trip.id) ?? [];
-        const stopsAhead = myStops.length
-          ? Math.max(0, myStops[0].sequence - (group.currentStopIndex ?? 0))
-          : null;
-        return (
-          <div key={trip.id} className="bg-white p-4 rounded-lg border">
-            <div className="flex justify-between items-center">
-              <span className="font-medium">{STATUS_LABEL[trip.status] ?? trip.status}</span>
-              <span className="text-sm text-slate-500">{Number(trip.fare).toLocaleString("vi-VN")} đ</span>
-            </div>
-            <p className="text-sm text-slate-600 mt-1">
-              {trip.pickupAddress} → {trip.dropoffAddress}
-            </p>
-            {ACTIVE.includes(trip.status) && (
-              <div className="mt-2">
-                <TripMap token={token} trip={trip} driverLocation={ACTIVE.includes(trip.status) ? loc : null} />
-              </div>
-            )}
+    <div>
+      <PageHeader title="Chuyến của tôi" description="Theo dõi xe đang tới và xem lại lịch sử di chuyển." action={<LiveDot connected={connected} label={connected ? "Cập nhật trực tiếp" : "Mất kết nối realtime"} />} />
+      {error && <Alert className="mb-4">{error}</Alert>}
 
-            {trip.tripType === "SHARED" && group && (
-              <div className="text-sm text-blue-700 mt-2 bg-blue-50 rounded p-2">
-                <p>
-                  Xe ghép · {group.trips?.length ?? group.seatsUsed} khách · điểm dừng {(group.currentStopIndex ?? 0) + 1}/
-                  {group.stops?.length ?? 0}
-                  {stopsAhead !== null && ACTIVE.includes(trip.status) && trip.status !== "IN_PROGRESS" && (
-                    <> · còn {stopsAhead} điểm trước khi đón bạn</>
-                  )}
-                </p>
-                <ol className="mt-1 text-xs text-slate-600 space-y-0.5">
-                  {group.stops?.map((s: any, i: number) => (
-                    <li key={s.id} className={i < group.currentStopIndex ? "line-through text-slate-400" : s.tripId === trip.id ? "font-medium text-slate-900" : ""}>
-                      {i + 1}. {s.kind === "PICKUP" ? "Đón" : "Trả"} · {s.address}
-                      {s.tripId === trip.id ? " (bạn)" : ""}
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )}
+      {trips && trips.length === 0 && (
+        <Card>
+          <EmptyState icon={<Icon.car className="h-6 w-6" />} title="Chưa có chuyến đi nào" description="Đặt chuyến đầu tiên của bạn, giá hiện trước khi đặt." action={<LinkButton href="/book">Đặt xe ngay</LinkButton>} />
+        </Card>
+      )}
 
-            {trip.driver && (
-              <p className="text-sm text-slate-500 mt-2">
-                Tài xế: {trip.driver.user?.fullName} — {trip.vehicle?.plateNumber}
-              </p>
-            )}
-            {loc && ACTIVE.includes(trip.status) && (
-              <p className="text-sm text-green-700 mt-1">
-                Tài xế đang trên bản đồ{loc.speed != null && loc.speed > 0.5 ? ` · ${Math.round(loc.speed * 3.6)} km/h` : ""}{" "}
-                <span className="text-slate-400">(cập nhật {Math.max(0, Math.round((now - loc.updatedAt) / 1000))}s trước)</span>
-              </p>
-            )}
+      {active.length > 0 && (
+        <section className="mb-8">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-3">Đang diễn ra</h2>
+          <div className="grid gap-4">
+            {active.map((trip) => {
+              const loc = trip.driverId ? locations[trip.driverId] : undefined;
+              const group = trip.group;
+              const myStops = group?.stops?.filter((s: any) => s.tripId === trip.id) ?? [];
+              const stopsAhead = myStops.length ? Math.max(0, myStops[0].sequence - (group.currentStopIndex ?? 0)) : null;
+              const st = STATUS[trip.status] ?? { label: trip.status, tone: "slate" as Tone };
+              return (
+                <Card key={trip.id} padded={false} className="overflow-hidden">
+                  <div className="grid lg:grid-cols-[minmax(0,1fr)_380px]">
+                    <div className="order-2 lg:order-1 p-5 sm:p-6 flex flex-col gap-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <Badge tone={st.tone} dot>
+                            {st.label}
+                          </Badge>
+                          <p className="mt-2 text-lg font-semibold text-ink-900">{vnd(trip.fare)}</p>
+                          <p className="text-xs text-ink-500">{trip.tripType === "SHARED" ? "Xe ghép" : "Bao xe"} · {trip.paymentMethod === "WALLET" ? "ví GhepGo" : "tiền mặt"}</p>
+                        </div>
+                        {CANCELLABLE.includes(trip.status) && (
+                          <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => cancel(trip.id)}>
+                            Huỷ chuyến
+                          </Button>
+                        )}
+                      </div>
 
-            {trip.status === "COMPLETED" && trip.payment && (
-              <p className="text-xs text-slate-500 mt-2">
-                Thanh toán: {trip.payment.method === "WALLET" ? "ví" : "tiền mặt"} ·{" "}
-                {trip.payment.status === "PAID" ? "đã thanh toán" : "chờ tài xế xác nhận"}
-              </p>
-            )}
-            {trip.status === "COMPLETED" && !trip.rating && (
-              <div className="mt-2 flex items-center gap-1 text-sm">
-                <span className="text-slate-500 mr-1">Đánh giá tài xế:</span>
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <button key={s} onClick={() => rate(trip.id, s)} className="text-xl text-yellow-500 hover:scale-110" title={`${s} sao`}>
-                    ★
-                  </button>
-                ))}
-              </div>
-            )}
-            {trip.rating && <p className="text-xs text-slate-500 mt-2">Bạn đã đánh giá {trip.rating.score} ★</p>}
-            {["COMPLETED", "CANCELLED", "IN_PROGRESS"].includes(trip.status) && (
-              <p className="text-xs mt-2">
-                {trip.complaints?.some((c: any) => ["OPEN", "IN_REVIEW"].includes(c.status)) ? (
-                  <a href={`/complaints?id=${trip.complaints[0].id}`} className="text-orange-600 underline">Khiếu nại đang xử lý</a>
-                ) : (
-                  <a href={`/complaints?tripId=${trip.id}`} className="text-slate-500 underline">Báo cáo sự cố / khiếu nại</a>
-                )}
-              </p>
-            )}
+                      <Stepper status={trip.status} />
 
-            {CANCELLABLE.includes(trip.status) && (
-              <button onClick={() => cancel(trip.id)} className="mt-3 text-sm text-red-600 underline">
-                Huỷ chuyến
-              </button>
-            )}
+                      <RouteLine pickup={trip.pickupAddress} dropoff={trip.dropoffAddress} />
+
+                      {trip.driver && (
+                        <div className="flex items-center gap-3 rounded-xl bg-ink-50 p-3">
+                          <Avatar name={trip.driver.user?.fullName} />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-ink-900 truncate">{trip.driver.user?.fullName}</p>
+                            <p className="text-xs text-ink-500">
+                              {trip.vehicle ? `${trip.vehicle.make} ${trip.vehicle.model} · ${trip.vehicle.plateNumber}` : "Đang cập nhật xe"}
+                              {trip.driver.ratingAvg ? ` · ${Number(trip.driver.ratingAvg).toFixed(1)} ★` : ""}
+                            </p>
+                          </div>
+                          {loc && (
+                            <div className="text-right text-xs">
+                              <p className="text-emerald-700 font-medium">{loc.speed != null && loc.speed > 0.5 ? `${Math.round(loc.speed * 3.6)} km/h` : "Đang dừng"}</p>
+                              <p className="text-ink-400">{Math.max(0, Math.round((now - loc.updatedAt) / 1000))}s trước</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {trip.tripType === "SHARED" && group && (
+                        <div className="rounded-xl border border-ink-200/70 p-3 text-sm">
+                          <p className="font-medium text-ink-900">
+                            Nhóm {group.trips?.length ?? group.seatsUsed} khách · điểm dừng {(group.currentStopIndex ?? 0) + 1}/{group.stops?.length ?? 0}
+                            {stopsAhead !== null && trip.status !== "IN_PROGRESS" && <span className="text-ink-500 font-normal"> · còn {stopsAhead} điểm trước khi đón bạn</span>}
+                          </p>
+                          <ol className="mt-2 space-y-1 text-xs">
+                            {group.stops?.map((s: any, i: number) => {
+                              const done = i < group.currentStopIndex;
+                              const mine = s.tripId === trip.id;
+                              return (
+                                <li key={s.id} className={`flex gap-2 ${done ? "text-ink-400 line-through" : mine ? "text-ink-900 font-medium" : "text-ink-600"}`}>
+                                  <span className={`h-4 w-4 shrink-0 rounded-full text-[10px] flex items-center justify-center ${done ? "bg-ink-200" : s.kind === "PICKUP" ? "bg-emerald-100 text-emerald-800" : "bg-orange-100 text-orange-800"}`}>{i + 1}</span>
+                                  <span className="truncate">
+                                    {s.kind === "PICKUP" ? "Đón" : "Trả"} · {s.address}
+                                    {mine ? " (bạn)" : ""}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        </div>
+                      )}
+                    </div>
+                    <div className="order-1 lg:order-2 border-b lg:border-b-0 lg:border-l border-ink-100 p-2 lg:p-3 bg-ink-50/40">
+                      <TripMap token={token} trip={trip} driverLocation={loc ?? null} height={300} />
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
           </div>
-        );
-      })}
+        </section>
+      )}
+
+      {past.length > 0 && (
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-3">Lịch sử</h2>
+          <Card padded={false} className="divide-y divide-ink-100">
+            {past.map((trip) => {
+              const st = STATUS[trip.status] ?? { label: trip.status, tone: "slate" as Tone };
+              const openComplaint = trip.complaints?.find((c: any) => ["OPEN", "IN_REVIEW"].includes(c.status));
+              return (
+                <div key={trip.id} className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge tone={st.tone}>{st.label}</Badge>
+                      <span className="text-xs text-ink-400">{new Date(trip.requestedAt).toLocaleString("vi-VN")}</span>
+                    </div>
+                    <p className="mt-1.5 text-sm text-ink-800 truncate">
+                      {trip.pickupAddress} <span className="text-ink-400">→</span> {trip.dropoffAddress}
+                    </p>
+                    <p className="text-xs text-ink-500 mt-0.5">
+                      {trip.driver?.user?.fullName ? `${trip.driver.user.fullName} · ` : ""}
+                      {trip.payment ? `${trip.payment.method === "WALLET" ? "ví" : "tiền mặt"} · ${trip.payment.status === "PAID" ? "đã thanh toán" : "chờ xác nhận"}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 sm:flex-col sm:items-end">
+                    <span className="font-semibold text-ink-900">{vnd(trip.fare)}</span>
+                    {trip.status === "COMPLETED" && !trip.rating && (
+                      <div className="flex items-center gap-0.5" title="Đánh giá tài xế">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <button key={s} onClick={() => rate(trip.id, s)} className="text-ink-300 hover:text-amber-400 hover:scale-110 transition" aria-label={`${s} sao`}>
+                            <Icon.star className="h-5 w-5" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {trip.rating && (
+                      <span className="text-xs text-amber-600 flex items-center gap-1">
+                        <Icon.star className="h-3.5 w-3.5" /> {trip.rating.score}/5
+                      </span>
+                    )}
+                    {["COMPLETED", "CANCELLED"].includes(trip.status) && (
+                      <a href={openComplaint ? `/complaints?id=${openComplaint.id}` : `/complaints?tripId=${trip.id}`} className={`text-xs ${openComplaint ? "text-orange-600 font-medium" : "text-ink-400 hover:text-ink-700"}`}>
+                        {openComplaint ? "Khiếu nại đang xử lý" : "Báo cáo sự cố"}
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+        </section>
+      )}
     </div>
   );
 }

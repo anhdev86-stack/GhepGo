@@ -1,31 +1,192 @@
 @import "tailwindcss";
 
+/* ---------- Design tokens (GhepGo brand) ---------- */
+@theme {
+  --font-sans: var(--font-brand), "Be Vietnam Pro", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-brand-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Brand teal */
+  --color-brand-50: #effcf8;
+  --color-brand-100: #d5f7ec;
+  --color-brand-200: #aeeedb;
+  --color-brand-300: #78dfc5;
+  --color-brand-400: #3fc8a9;
+  --color-brand-500: #16ad90;
+  --color-brand-600: #0b8c75;
+  --color-brand-700: #0b705f;
+  --color-brand-800: #0d594d;
+  --color-brand-900: #0d4a41;
+  --color-brand-950: #052a25;
+
+  /* Ink (navy neutrals) */
+  --color-ink-50: #f6f7fb;
+  --color-ink-100: #eceef4;
+  --color-ink-200: #d9dde8;
+  --color-ink-300: #b9c0d1;
+  --color-ink-400: #8d97b0;
+  --color-ink-500: #667092;
+  --color-ink-600: #4d5678;
+  --color-ink-700: #3c4461;
+  --color-ink-800: #262c44;
+  --color-ink-900: #171b2e;
+  --color-ink-950: #0b0e1a;
+
+  /* Accent (amber) */
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
+
+  --radius-xl: 0.9rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 8px 24px -12px rgb(15 23 42 / 0.12);
+  --shadow-float: 0 12px 40px -12px rgb(15 23 42 / 0.25);
+}
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f7fb;
+  --foreground: #171b2e;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: light;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Map markers (Leaflet divIcon) */
+::selection {
+  background: #aeeedb;
+  color: #052a25;
+}
+
+@layer components {
+  /* ---------- Reusable primitives ---------- */
+  .card {
+    @apply bg-white rounded-2xl border border-ink-200/70 shadow-[var(--shadow-card)];
+  }
+  .input {
+    @apply w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-[15px] text-ink-900 placeholder:text-ink-400 outline-none transition
+      focus:border-brand-500 focus:ring-4 focus:ring-brand-500/15 disabled:bg-ink-50 disabled:text-ink-400;
+  }
+  select.input {
+    appearance: none;
+    padding-right: 2.25rem;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238d97b0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><polyline points='6 9 12 15 18 9'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition select-none whitespace-nowrap
+      focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-500/25 disabled:opacity-50 disabled:cursor-not-allowed
+      active:scale-[0.985];
+  }
+  .btn-md {
+    @apply px-4 py-2.5 text-sm;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-[13px] rounded-lg;
+  }
+  .btn-lg {
+    @apply px-6 py-3.5 text-base;
+  }
+  .btn-primary {
+    @apply bg-brand-600 text-white shadow-[0_8px_20px_-10px_rgb(11_140_117_/_0.8)] hover:bg-brand-700;
+  }
+  .btn-secondary {
+    @apply bg-white text-ink-800 border border-ink-200 hover:bg-ink-50 hover:border-ink-300;
+  }
+  .btn-soft {
+    @apply bg-brand-50 text-brand-700 hover:bg-brand-100;
+  }
+  .btn-ghost {
+    @apply text-ink-600 hover:bg-ink-100 hover:text-ink-900;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-dark {
+    @apply bg-ink-900 text-white hover:bg-ink-800;
+  }
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap;
+  }
+  .link {
+    @apply text-brand-700 font-medium hover:text-brand-800 hover:underline underline-offset-4;
+  }
+  .label {
+    @apply block text-[13px] font-medium text-ink-600 mb-1.5;
+  }
+  .table {
+    @apply w-full text-sm;
+  }
+  .table thead th {
+    @apply text-left text-[12px] uppercase tracking-wide text-ink-500 font-semibold px-3 py-2.5 bg-ink-50/70 first:rounded-l-xl last:rounded-r-xl;
+  }
+  .table tbody td {
+    @apply px-3 py-3 border-b border-ink-100 align-middle;
+  }
+  .table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+  .table tbody tr:hover td {
+    @apply bg-ink-50/50;
+  }
+
+  .gradient-brand {
+    background: linear-gradient(135deg, #0b705f 0%, #0b8c75 45%, #16ad90 100%);
+  }
+  .gradient-ink {
+    background:
+      radial-gradient(60% 80% at 80% 0%, rgb(22 173 144 / 0.35) 0%, transparent 60%),
+      radial-gradient(40% 60% at 10% 100%, rgb(245 158 11 / 0.18) 0%, transparent 60%),
+      linear-gradient(160deg, #0b0e1a 0%, #171b2e 60%, #1c2340 100%);
+  }
+  .grid-bg {
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.06) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  .fade-up {
+    animation: fade-up 0.5s ease-out both;
+  }
+  @keyframes pulse-ring {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(2.2);
+      opacity: 0;
+    }
+  }
+  .pulse-dot::after {
+    content: "";
+    @apply absolute inset-0 rounded-full bg-brand-400;
+    animation: pulse-ring 1.6s ease-out infinite;
+  }
+
+}
+
+/* ---------- Map markers (Leaflet divIcon) ---------- */
 .gg-marker {
   background: transparent;
   border: 0;
@@ -69,4 +230,13 @@ body {
 }
 .leaflet-container {
   font-family: inherit;
+  background: #e9edf3;
+}
+.leaflet-bar a {
+  color: #262c44 !important;
+}
+.leaflet-tooltip {
+  border-radius: 8px;
+  border-color: #d9dde8;
+  font-size: 12px;
 }
