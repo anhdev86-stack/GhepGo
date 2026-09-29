@@ -16,12 +16,14 @@ import { FleetModule } from './fleet/fleet.module.js';
 import { SmsModule } from './sms/sms.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { ComplaintsModule } from './complaints/complaints.module.js';
+import { ZonesModule } from './zones/zones.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     RedisModule,
+    ZonesModule,
     SmsModule,
     NotificationsModule,
     RealtimeModule,

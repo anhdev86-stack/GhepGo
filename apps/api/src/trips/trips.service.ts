@@ -7,6 +7,7 @@ import { MatchingService } from '../matching/matching.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import { GeoService } from '../geo/geo.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
+import { ZonesService } from '../zones/zones.service.js';
 
 const NEXT_STATUS: Record<string, string[]> = {
   ACCEPTED: ['EN_ROUTE_TO_PICKUP', 'CANCELLED'],
@@ -24,11 +25,19 @@ export class TripsService {
     private publisher: RealtimePublisher,
     private geo: GeoService,
     private wallet: WalletService,
+    private zones: ZonesService,
   ) {}
 
   async create(customerId: string, dto: CreateTripDto) {
+    const area = await this.zones.checkTrip(
+      { lat: dto.pickupLat, lng: dto.pickupLng },
+      { lat: dto.dropoffLat, lng: dto.dropoffLng },
+    );
+    if (!area.ok) throw new BadRequestException(area.message);
+    const pickupZoneId = area.pickupZone?.id ?? null;
+
     if (dto.tripType === 'SHARED') {
-      return this.matchingService.matchOrCreateGroup(customerId, dto);
+      return this.matchingService.matchOrCreateGroup(customerId, dto, pickupZoneId);
     }
 
     // Road distance from the map provider; Haversine-based fallback inside GeoService.
@@ -45,6 +54,7 @@ export class TripsService {
         customerId,
         tripType: dto.tripType,
         paymentMethod: dto.paymentMethod ?? 'CASH',
+        pickupZoneId,
         pickupAddress: dto.pickupAddress,
         pickupLat: dto.pickupLat,
         pickupLng: dto.pickupLng,
@@ -88,10 +98,13 @@ export class TripsService {
     });
   }
 
-  async findAvailableForDrivers() {
+  /** Drivers assigned to a zone only see trips picking up in that zone. */
+  async findAvailableForDrivers(userId: string) {
+    const driver = await this.prisma.driver.findUnique({ where: { userId }, select: { zoneId: true } });
     return this.prisma.trip.findMany({
-      where: { status: 'REQUESTED', driverId: null },
+      where: { status: 'REQUESTED', driverId: null, ...this.zones.driverZoneFilter(driver?.zoneId ?? null) },
       orderBy: { requestedAt: 'asc' },
+      include: { pickupZone: { select: { name: true } } },
     });
   }
 
@@ -119,6 +132,9 @@ export class TripsService {
     if (!trip) throw new NotFoundException('Không tìm thấy chuyến đi');
     if (trip.status !== 'REQUESTED' || trip.driverId) {
       throw new BadRequestException('Chuyến đi này đã được nhận hoặc không còn khả dụng');
+    }
+    if (!this.zones.driverAllowed(driver.zoneId, trip.pickupZoneId)) {
+      throw new BadRequestException('Chuyến đi này nằm ngoài khu vực hoạt động của bạn');
     }
 
     // Atomic claim: only one driver can win a REQUESTED trip.

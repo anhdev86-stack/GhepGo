@@ -46,6 +46,7 @@ export default function DriverPage() {
   const [availableGroups, setAvailableGroups] = useState<any[]>([]);
   const [myGroups, setMyGroups] = useState<any[]>([]);
   const [status, setStatus] = useState<"OFFLINE" | "AVAILABLE" | "ON_TRIP">("OFFLINE");
+  const [zoneName, setZoneName] = useState<string | null>(null);
   const [plateNumber, setPlateNumber] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
@@ -64,7 +65,13 @@ export default function DriverPage() {
 
   useEffect(() => {
     if (!token) return;
-    api.driverMe(token).then((d) => setStatus(d.status)).catch(() => {});
+    api
+      .driverMe(token)
+      .then((d) => {
+        setStatus(d.status);
+        setZoneName(d.zone?.name ?? null);
+      })
+      .catch(() => {});
     refresh();
     // Realtime events drive refreshes; the slow interval is only a safety net.
     const interval = setInterval(refresh, 20000);
@@ -157,6 +164,9 @@ export default function DriverPage() {
 
       <div className="bg-white p-4 rounded-lg border">
         <h2 className="font-medium mb-2">Xe của tôi</h2>
+        <p className="text-xs text-slate-500 mb-2">
+          Khu vực hoạt động: {zoneName ?? "chưa gán (nhận chuyến mọi khu vực)"}
+        </p>
         <ul className="text-sm mb-3">
           {vehicles.map((v) => (
             <li key={v.id}>
@@ -264,6 +274,7 @@ export default function DriverPage() {
             <p className="text-sm">
               {g.trips.length} khách · {g.seatsUsed} ghế · {((g.totalDistanceMeters ?? 0) / 1000).toFixed(1)} km ·{" "}
               {g.trips.reduce((sum: number, t: any) => sum + Number(t.fare), 0).toLocaleString("vi-VN")} đ
+              {g.zone?.name ? ` · ${g.zone.name}` : ""}
             </p>
             <StopList stops={g.stops} currentStopIndex={0} />
             <button
@@ -286,6 +297,7 @@ export default function DriverPage() {
             </p>
             <p className="text-sm text-slate-500">
               {(trip.distanceMeters / 1000).toFixed(1)} km — {Number(trip.fare).toLocaleString("vi-VN")} đ
+              {trip.pickupZone?.name ? ` · ${trip.pickupZone.name}` : ""}
             </p>
             <button
               onClick={() => run(() => api.acceptTrip(token!, trip.id))}

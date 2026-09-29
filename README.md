@@ -103,6 +103,19 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 - Provider SMS cắm được qua `SMS_PROVIDER`: `console` (dev: in ra log và trả `devCode` trong response khi không phải
   production), `esms` (eSMS.vn brandname, `ESMS_*`), `twilio` (`TWILIO_*`). `OTP_REQUIRED=false` để tắt khi dev.
 
+### Khu vực hoạt động (`src/zones`, `src/fleet`)
+
+- Khu vực = hình tròn (tâm + bán kính km), bật/tắt được. Một điểm thuộc khu vực nhỏ nhất chứa nó.
+- `ZONE_ENFORCEMENT=pickup` (mặc định): điểm đón phải nằm trong khu vực đang hoạt động, nếu không đặt xe bị từ chối
+  ("ngoài vùng phục vụ"); `both` kiểm cả điểm trả; `off` chỉ dùng khu vực để gom/lọc. Chưa cấu hình khu vực nào thì
+  không ràng buộc (dùng được ngay sau cài đặt).
+- Mỗi chuyến lưu `pickupZoneId`, mỗi nhóm ghép lưu `zoneId`; **chỉ ghép chung nhóm trong cùng khu vực**.
+- Tài xế được gán khu vực chỉ thấy (`/trips/available`, `/trip-groups/available`), nhận được, và được thông báo chuyến
+  trong khu vực đó; tài xế chưa gán nhận mọi khu vực. Số tài xế "gần điểm đón" trên màn đặt xe cũng lọc theo khu vực.
+- API: `GET /zones` (đang hoạt động), `GET /zones/coverage?lat&lng` (điểm có được phục vụ không),
+  admin `POST/PATCH/DELETE /admin/zones[/:id]` (không xoá khi còn tài xế), `GET /admin/reports/zones?from&to`.
+  Web: màn đặt xe báo vùng phục vụ và chặn nút đặt; bảng tài xế hiển thị khu vực; `/admin/reports` quản lý và thống kê theo khu vực.
+
 ### Khiếu nại (`src/complaints`)
 
 - Khách hoặc tài xế của chuyến (đã bắt đầu/kết thúc) gửi `POST /complaints {tripId, category, description}`;
@@ -260,6 +273,6 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
-- Ràng buộc khu vực hoạt động khi ghép chuyến; SLA và phân công admin cho khiếu nại.
+- Khu vực dạng đa giác (PostGIS) thay hình tròn khi cần; SLA và phân công admin cho khiếu nại.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

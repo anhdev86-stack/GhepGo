@@ -74,7 +74,7 @@ export class MatchingService {
     private publisher: RealtimePublisher,
   ) {}
 
-  async matchOrCreateGroup(customerId: string, dto: CreateTripDto) {
+  async matchOrCreateGroup(customerId: string, dto: CreateTripDto, pickupZoneId: string | null = null) {
     const seatsRequested = dto.seatsRequested ?? 1;
     const directDistanceMeters = Math.round(
       haversineDistanceMeters(dto.pickupLat, dto.pickupLng, dto.dropoffLat, dto.dropoffLng),
@@ -87,10 +87,10 @@ export class MatchingService {
     };
 
     for (let attempt = 0; attempt <= MATCH_RETRIES; attempt++) {
-      const best = await this.findBestGroup(dto, ctx);
+      const best = await this.findBestGroup(dto, ctx, pickupZoneId);
       try {
-        if (best) return await this.joinGroup(customerId, dto, ctx, best);
-        return await this.createNewGroup(customerId, dto, ctx);
+        if (best) return await this.joinGroup(customerId, dto, ctx, best, pickupZoneId);
+        return await this.createNewGroup(customerId, dto, ctx, pickupZoneId);
       } catch (err) {
         if (err instanceof MatchConflict && attempt < MATCH_RETRIES) {
           this.logger.debug(`match conflict on group ${best?.groupId}, retrying`);
@@ -100,14 +100,14 @@ export class MatchingService {
       }
     }
     // unreachable, satisfies the type checker
-    return this.createNewGroup(customerId, dto, ctx);
+    return this.createNewGroup(customerId, dto, ctx, pickupZoneId);
   }
 
   // ------------------------------------------------------------------
   // Candidate search
   // ------------------------------------------------------------------
 
-  private async findBestGroup(dto: CreateTripDto, ctx: TripCtx): Promise<Candidate | null> {
+  private async findBestGroup(dto: CreateTripDto, ctx: TripCtx, zoneId: string | null): Promise<Candidate | null> {
     const newPickup: RouteStop = {
       tripId: NEW_TRIP_PLACEHOLDER_ID,
       kind: 'PICKUP',
@@ -127,6 +127,8 @@ export class MatchingService {
       where: {
         status: { in: ['MATCHING', 'ASSIGNED', 'IN_PROGRESS'] },
         seatsUsed: { lte: SHARED_MAX_SEATS - ctx.seatsRequested },
+        // Riders are only pooled within the same service zone.
+        zoneId,
       },
       include: {
         stops: { orderBy: { sequence: 'asc' } },
@@ -213,7 +215,7 @@ export class MatchingService {
     return base + detour;
   }
 
-  private async joinGroup(customerId: string, dto: CreateTripDto, ctx: TripCtx, best: Candidate) {
+  private async joinGroup(customerId: string, dto: CreateTripDto, ctx: TripCtx, best: Candidate, pickupZoneId: string | null) {
     const fare = this.sharedFare(ctx, best.detourExtraMeters);
     const hasDriver = !!best.driverId;
 
@@ -235,6 +237,7 @@ export class MatchingService {
           customerId,
           tripType: 'SHARED',
           paymentMethod: dto.paymentMethod ?? 'CASH',
+          pickupZoneId,
           status: hasDriver ? 'ACCEPTED' : 'ASSIGNED',
           groupId: best.groupId,
           driverId: best.driverId,
@@ -288,13 +291,14 @@ export class MatchingService {
     return trip;
   }
 
-  private async createNewGroup(customerId: string, dto: CreateTripDto, ctx: TripCtx) {
+  private async createNewGroup(customerId: string, dto: CreateTripDto, ctx: TripCtx, pickupZoneId: string | null) {
     const fare = this.sharedFare(ctx, 0);
 
     const trip = await this.prisma.$transaction(async (tx) => {
       const group = await tx.tripGroup.create({
         data: {
           status: 'MATCHING',
+          zoneId: pickupZoneId,
           seatsTotal: SHARED_MAX_SEATS,
           seatsUsed: ctx.seatsRequested,
           totalDistanceMeters: ctx.directDistanceMeters,
@@ -306,6 +310,7 @@ export class MatchingService {
           customerId,
           tripType: 'SHARED',
           paymentMethod: dto.paymentMethod ?? 'CASH',
+          pickupZoneId,
           status: 'ASSIGNED',
           groupId: group.id,
           seatsRequested: ctx.seatsRequested,

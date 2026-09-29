@@ -27,8 +27,8 @@ export class TripsController {
 
   @Get('available')
   @Roles('DRIVER')
-  findAvailable() {
-    return this.tripsService.findAvailableForDrivers();
+  findAvailable(@CurrentUser() user: AuthUser) {
+    return this.tripsService.findAvailableForDrivers(user.userId);
   }
 
   @Get('driver/mine')

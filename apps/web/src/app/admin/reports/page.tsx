@@ -17,6 +17,7 @@ export default function ReportsPage() {
   const [ov, setOv] = useState<any | null>(null);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [zones, setZones] = useState<any[]>([]);
+  const [zoneStats, setZoneStats] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [zone, setZone] = useState({ name: "", centerLat: "10.7769", centerLng: "106.7009", radiusKm: "5" });
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +27,7 @@ export default function ReportsPage() {
     api.adminOverview(token, from, `${to}T23:59:59`).then(setOv).catch(() => {});
     api.allWithdrawals(token).then(setWithdrawals).catch(() => {});
     api.zones(token).then(setZones).catch(() => {});
+    api.zoneStats(token, from, `${to}T23:59:59`).then((r) => setZoneStats(r.zones)).catch(() => {});
     api.allDrivers(token).then(setDrivers).catch(() => {});
   }, [token, from, to]);
 
@@ -177,11 +179,52 @@ export default function ReportsPage() {
           <input className="border rounded px-2 py-1 text-sm w-20" placeholder="Bán kính km" value={zone.radiusKm} onChange={(e) => setZone({ ...zone, radiusKm: e.target.value })} />
           <button className="bg-blue-600 text-white rounded px-3 py-1 text-sm">Thêm khu vực</button>
         </form>
-        <ul className="text-sm mb-3">
-          {zones.map((z) => (
-            <li key={z.id}>{z.name} · bán kính {z.radiusKm} km · {z._count?.drivers ?? 0} tài xế</li>
-          ))}
-        </ul>
+        <table className="w-full text-sm mb-3">
+          <thead><tr className="text-left text-slate-500"><th>Khu vực</th><th>Bán kính</th><th>Tài xế</th><th>Trạng thái</th><th></th></tr></thead>
+          <tbody>
+            {zones.map((z) => (
+              <tr key={z.id} className="border-t">
+                <td className="py-1">{z.name}</td>
+                <td>
+                  <input
+                    type="number"
+                    className="border rounded px-1 py-0.5 w-16"
+                    defaultValue={z.radiusKm}
+                    min={0.5}
+                    step={0.5}
+                    onBlur={(e) => Number(e.target.value) !== z.radiusKm && run(() => api.updateZone(token!, z.id, { radiusKm: Number(e.target.value) }))}
+                  />{" "}
+                  km
+                </td>
+                <td>{z._count?.drivers ?? 0}</td>
+                <td>
+                  <button className={z.isActive ? "text-green-700 underline" : "text-slate-500 underline"} onClick={() => run(() => api.updateZone(token!, z.id, { isActive: !z.isActive }))}>
+                    {z.isActive ? "Đang hoạt động" : "Tạm dừng"}
+                  </button>
+                </td>
+                <td className="text-right">
+                  <button className="text-red-600 underline" onClick={() => confirm(`Xoá khu vực ${z.name}?`) && run(() => api.deleteZone(token!, z.id))}>Xoá</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="text-xs text-slate-500 mb-3">
+          Điểm đón ngoài mọi khu vực đang hoạt động sẽ không đặt được xe; khách chỉ ghép chung nhóm trong cùng khu vực;
+          tài xế đã gán khu vực chỉ thấy chuyến trong khu vực đó, tài xế chưa gán nhận mọi khu vực.
+        </p>
+        {zoneStats.length > 0 && (
+          <table className="w-full text-sm mb-3">
+            <thead><tr className="text-left text-slate-500"><th>Thống kê theo khu vực</th><th>Yêu cầu</th><th>Hoàn thành</th><th>Huỷ</th><th>Doanh thu</th><th>Tài xế (trực)</th></tr></thead>
+            <tbody>
+              {zoneStats.map((z) => (
+                <tr key={z.id ?? "none"} className="border-t">
+                  <td className="py-1">{z.name}</td><td>{z.requested}</td><td>{z.completed}</td><td>{z.cancelled}</td><td>{vnd(z.grossFare)}</td><td>{z.drivers} ({z.driversOnline})</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
         <h3 className="text-sm font-medium mb-1">Gán tài xế vào khu vực</h3>
         <table className="w-full text-sm">
           <tbody>

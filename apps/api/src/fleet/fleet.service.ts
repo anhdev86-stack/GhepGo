@@ -2,7 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Prisma } from '../../generated/prisma/index.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
-import type { CreateZoneDto, RateTripDto } from './fleet.dto.js';
+import type { CreateZoneDto, RateTripDto, UpdateZoneDto } from './fleet.dto.js';
+import { ZonesService } from '../zones/zones.service.js';
 
 function parseRange(from?: string, to?: string) {
   const end = to ? new Date(to) : new Date();
@@ -19,6 +20,7 @@ export class FleetService {
   constructor(
     private prisma: PrismaService,
     private wallet: WalletService,
+    private zones: ZonesService,
   ) {}
 
   // ---------------- shifts ----------------
@@ -45,11 +47,76 @@ export class FleetService {
   // ---------------- zones ----------------
 
   listZones() {
-    return this.prisma.serviceZone.findMany({ orderBy: { name: 'asc' }, include: { _count: { select: { drivers: true } } } });
+    return this.prisma.serviceZone.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { drivers: true, trips: true, groups: true } } },
+    });
   }
 
-  createZone(dto: CreateZoneDto) {
-    return this.prisma.serviceZone.create({ data: dto });
+  async createZone(dto: CreateZoneDto) {
+    const z = await this.prisma.serviceZone.create({ data: dto });
+    this.zones.invalidate();
+    return z;
+  }
+
+  async updateZone(id: string, dto: UpdateZoneDto) {
+    const z = await this.prisma.serviceZone.update({ where: { id }, data: dto });
+    this.zones.invalidate();
+    return z;
+  }
+
+  async deleteZone(id: string) {
+    const inUse = await this.prisma.driver.count({ where: { zoneId: id } });
+    if (inUse > 0) throw new BadRequestException(`Còn ${inUse} tài xế thuộc khu vực này, hãy gán lại trước khi xoá`);
+    await this.prisma.$transaction([
+      this.prisma.trip.updateMany({ where: { pickupZoneId: id }, data: { pickupZoneId: null } }),
+      this.prisma.tripGroup.updateMany({ where: { zoneId: id }, data: { zoneId: null } }),
+      this.prisma.serviceZone.delete({ where: { id } }),
+    ]);
+    this.zones.invalidate();
+    return { ok: true };
+  }
+
+  /** Public: is this point served, and by which zone? */
+  async coverage(lat: number, lng: number) {
+    const zone = await this.zones.resolve(lat, lng);
+    const total = (await this.zones.activeZones()).length;
+    return { served: total === 0 || this.zones.enforcement === 'off' || !!zone, zone, enforcement: this.zones.enforcement, zonesConfigured: total };
+  }
+
+  /** Admin: trips / revenue / drivers per zone in a period. */
+  async zoneStats(from?: string, to?: string) {
+    const { start, end } = parseRange(from, to);
+    const [zones, trips, drivers] = await Promise.all([
+      this.prisma.serviceZone.findMany({ orderBy: { name: 'asc' } }),
+      this.prisma.trip.groupBy({
+        by: ['pickupZoneId', 'status'],
+        where: { requestedAt: { gte: start, lte: end } },
+        _count: true,
+        _sum: { fare: true },
+      }),
+      this.prisma.driver.groupBy({ by: ['zoneId', 'status'], _count: true }),
+    ]);
+    const row = (zoneId: string | null) => {
+      const t = trips.filter((x) => x.pickupZoneId === zoneId);
+      const d = drivers.filter((x) => x.zoneId === zoneId);
+      const completed = t.filter((x) => x.status === 'COMPLETED');
+      return {
+        requested: t.reduce((s, x) => s + x._count, 0),
+        completed: completed.reduce((s, x) => s + x._count, 0),
+        cancelled: t.filter((x) => x.status === 'CANCELLED').reduce((s, x) => s + x._count, 0),
+        grossFare: completed.reduce((s, x) => s + Number(x._sum.fare ?? 0), 0),
+        drivers: d.reduce((s, x) => s + x._count, 0),
+        driversOnline: d.filter((x) => x.status !== 'OFFLINE').reduce((s, x) => s + x._count, 0),
+      };
+    };
+    return {
+      range: { start, end },
+      zones: [
+        ...zones.map((z) => ({ id: z.id, name: z.name, isActive: z.isActive, radiusKm: z.radiusKm, ...row(z.id) })),
+        { id: null, name: 'Ngoài khu vực / chưa gán', isActive: true, radiusKm: null, ...row(null) },
+      ],
+    };
   }
 
   async assignZone(driverId: string, zoneId: string | null) {

@@ -186,6 +186,16 @@ export const api = {
     request<any>(`/admin/reports/overview?${from ? `from=${from}&` : ""}${to ? `to=${to}` : ""}`, { token }),
   adminDriverStats: (token: string, driverId: string) => request<any>(`/admin/drivers/${driverId}/stats`, { token }),
   zones: (token: string) => request<any[]>("/admin/zones", { token }),
+  zoneCoverage: (token: string, lat: number, lng: number) =>
+    request<{ served: boolean; zone: { id: string; name: string } | null; enforcement: string; zonesConfigured: number }>(
+      `/zones/coverage?lat=${lat}&lng=${lng}`,
+      { token },
+    ),
+  updateZone: (token: string, id: string, body: { name?: string; radiusKm?: number; isActive?: boolean; centerLat?: number; centerLng?: number }) =>
+    request(`/admin/zones/${id}`, { method: "PATCH", token, body }),
+  deleteZone: (token: string, id: string) => request(`/admin/zones/${id}`, { method: "DELETE", token }),
+  zoneStats: (token: string, from?: string, to?: string) =>
+    request<any>(`/admin/reports/zones?${from ? `from=${from}&` : ""}${to ? `to=${to}` : ""}`, { token }),
   createZone: (token: string, body: { name: string; centerLat: number; centerLng: number; radiusKm: number }) =>
     request("/admin/zones", { method: "POST", token, body }),
   assignZone: (token: string, driverId: string, zoneId: string | null) =>

@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import { FleetService } from '../fleet/fleet.service.js';
+import { ZonesService } from '../zones/zones.service.js';
 import { UpdateDriverStatusDto } from './dto/update-status.dto.js';
 import { UpdateDriverLocationDto } from './dto/update-location.dto.js';
 
@@ -18,6 +19,7 @@ export class DriversService {
     private redis: RedisService,
     private publisher: RealtimePublisher,
     private fleet: FleetService,
+    private zones: ZonesService,
   ) {}
 
   async findByUserId(userId: string) {
@@ -109,8 +111,13 @@ export class DriversService {
     const hits = await this.redis.nearbyDrivers(lat, lng, radiusMeters);
     const live = hits.filter((h) => !h.stale);
     if (live.length === 0) return [];
+    const zone = await this.zones.resolve(lat, lng);
     const drivers = await this.prisma.driver.findMany({
-      where: { id: { in: live.map((h) => h.driverId) }, status: 'AVAILABLE' },
+      where: {
+        id: { in: live.map((h) => h.driverId) },
+        status: 'AVAILABLE',
+        OR: [{ zoneId: null }, ...(zone ? [{ zoneId: zone.id }] : [])],
+      },
       include: { user: { select: { fullName: true } }, vehicles: { where: { isActive: true }, take: 1 } },
     });
     const byId = new Map(drivers.map((d) => [d.id, d]));

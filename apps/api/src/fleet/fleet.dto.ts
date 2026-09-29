@@ -22,3 +22,11 @@ export class ReportQueryDto {
   @IsOptional() @IsString() from?: string;
   @IsOptional() @IsString() to?: string;
 }
+
+export class UpdateZoneDto {
+  @IsOptional() @IsString() @IsNotEmpty() @MaxLength(100) name?: string;
+  @IsOptional() @Type(() => Number) @IsLatitude() centerLat?: number;
+  @IsOptional() @Type(() => Number) @IsLongitude() centerLng?: number;
+  @IsOptional() @Type(() => Number) @IsNumber() @Min(0.5) @Max(200) radiusKm?: number;
+  @IsOptional() @IsBoolean() isActive?: boolean;
+}

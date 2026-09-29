@@ -13,8 +13,8 @@ export class TripGroupsController {
 
   @Get('available')
   @Roles('DRIVER')
-  findAvailable() {
-    return this.tripGroupsService.findAvailable();
+  findAvailable(@CurrentUser() user: AuthUser) {
+    return this.tripGroupsService.findAvailable(user.userId);
   }
 
   @Get('mine')

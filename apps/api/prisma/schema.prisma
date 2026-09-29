@@ -219,6 +219,8 @@ model Trip {
   cancelledAt    DateTime?
 
   paymentMethod  PaymentMethod @default(CASH)
+  pickupZoneId   String?
+  pickupZone     ServiceZone?  @relation("TripPickupZone", fields: [pickupZoneId], references: [id])
 
   payment    Payment?
   stops      TripStop[]
@@ -229,6 +231,7 @@ model Trip {
   @@index([customerId])
   @@index([driverId])
   @@index([groupId])
+  @@index([pickupZoneId, status])
   @@map("trips")
 }
 
@@ -239,6 +242,8 @@ model TripGroup {
   driver              Driver?         @relation(fields: [driverId], references: [id])
   vehicleId           String?
   vehicle             Vehicle?        @relation(fields: [vehicleId], references: [id])
+  zoneId              String?
+  zone                ServiceZone?    @relation("GroupZone", fields: [zoneId], references: [id])
   seatsTotal          Int
   seatsUsed           Int             @default(0)
   totalDistanceMeters Int?
@@ -250,6 +255,7 @@ model TripGroup {
   stops TripStop[]
 
   @@index([status])
+  @@index([zoneId, status])
   @@map("trip_groups")
 }
 
@@ -343,6 +349,8 @@ model ServiceZone {
   createdAt DateTime @default(now())
 
   drivers Driver[]
+  trips   Trip[]      @relation("TripPickupZone")
+  groups  TripGroup[] @relation("GroupZone")
 
   @@map("service_zones")
 }

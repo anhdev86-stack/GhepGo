@@ -102,7 +102,8 @@ export class NotificationsListener implements OnModuleInit {
 
   /** New private trip → available drivers within 5 km of the pickup (transient, not stored). */
   private async onTripCreated(trip: Extract<RealtimeEvent, { type: 'trip.created' }>['trip']) {
-    const userIds = await this.nearbyDriverUserIds(trip.pickupLat, trip.pickupLng);
+    const zone = await this.prisma.trip.findUnique({ where: { id: trip.id }, select: { pickupZoneId: true } });
+    const userIds = await this.nearbyDriverUserIds(trip.pickupLat, trip.pickupLng, zone?.pickupZoneId ?? null);
     if (userIds.length === 0) return;
     await this.notifications.sendToUsers(userIds, {
       title: 'Chuyến mới gần bạn',
@@ -113,9 +114,9 @@ export class NotificationsListener implements OnModuleInit {
   }
 
   private async onGroupCreated(groupId: string) {
-    const first = await this.prisma.tripStop.findFirst({ where: { groupId, sequence: 0 } });
+    const first = await this.prisma.tripStop.findFirst({ where: { groupId, sequence: 0 }, include: { group: { select: { zoneId: true } } } });
     if (!first) return;
-    const userIds = await this.nearbyDriverUserIds(first.lat, first.lng);
+    const userIds = await this.nearbyDriverUserIds(first.lat, first.lng, first.group.zoneId);
     if (userIds.length === 0) return;
     await this.notifications.sendToUsers(userIds, {
       title: 'Nhóm xe ghép mới gần bạn',
@@ -125,11 +126,16 @@ export class NotificationsListener implements OnModuleInit {
     });
   }
 
-  private async nearbyDriverUserIds(lat: number, lng: number) {
+  private async nearbyDriverUserIds(lat: number, lng: number, zoneId: string | null) {
     const hits = (await this.redis.nearbyDrivers(lat, lng, NEARBY_DRIVER_RADIUS_M, 50)).filter((h) => !h.stale);
     if (hits.length === 0) return [];
     const drivers = await this.prisma.driver.findMany({
-      where: { id: { in: hits.map((h) => h.driverId) }, status: 'AVAILABLE' },
+      where: {
+        id: { in: hits.map((h) => h.driverId) },
+        status: 'AVAILABLE',
+        // drivers bound to a zone only get work from that zone; unassigned drivers get everything
+        OR: [{ zoneId: null }, ...(zoneId ? [{ zoneId }] : [])],
+      },
       select: { userId: true },
     });
     return drivers.map((d) => d.userId);

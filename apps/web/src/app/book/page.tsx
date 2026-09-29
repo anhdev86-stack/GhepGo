@@ -24,6 +24,7 @@ export default function BookPage() {
   const [nearby, setNearby] = useState<any[] | null>(null);
   const [wallet, setWallet] = useState<any | null>(null);
   const [preview, setPreview] = useState<{ distanceMeters: number; durationSecs: number; estimated: boolean } | null>(null);
+  const [coverage, setCoverage] = useState<{ served: boolean; zone: { name: string } | null; zonesConfigured: number } | null>(null);
 
   useEffect(() => {
     if (!token) return;
@@ -35,6 +36,7 @@ export default function BookPage() {
     if (!token) return;
     const t = setTimeout(() => {
       api.nearbyDrivers(token, pickup.lat, pickup.lng, 5000).then(setNearby).catch(() => setNearby(null));
+      api.zoneCoverage(token, pickup.lat, pickup.lng).then(setCoverage).catch(() => setCoverage(null));
       api.route(token, pickup, dropoff).then(setPreview).catch(() => setPreview(null));
     }, 500);
     return () => clearTimeout(t);
@@ -90,6 +92,11 @@ export default function BookPage() {
             {preview.estimated && <span className="text-orange-600"> · ước lượng đường chim bay</span>}
           </p>
         )}
+        {coverage && coverage.zonesConfigured > 0 && (
+          <p className={`text-xs ${coverage.served ? "text-slate-500" : "text-red-600"}`}>
+            {coverage.served ? `Khu vực phục vụ: ${coverage.zone?.name ?? "toàn hệ thống"}` : "Điểm đón nằm ngoài vùng phục vụ hiện tại, chưa thể đặt xe."}
+          </p>
+        )}
         {nearby !== null && (
           <p className="text-xs text-slate-500">
             {nearby.length > 0
@@ -128,7 +135,7 @@ export default function BookPage() {
 
         {error && <p className="text-red-600 text-sm">{error}</p>}
 
-        <button type="submit" disabled={loading} className="bg-blue-600 text-white rounded px-3 py-2 disabled:opacity-50">
+        <button type="submit" disabled={loading || (coverage ? !coverage.served : false)} className="bg-blue-600 text-white rounded px-3 py-2 disabled:opacity-50">
           {loading ? "Đang đặt xe..." : "Đặt xe"}
         </button>
       </form>

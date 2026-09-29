@@ -3,11 +3,13 @@ import { Prisma } from '../../generated/prisma/index.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import { WalletService } from '../wallet/wallet.service.js';
+import { ZonesService } from '../zones/zones.service.js';
 
 const stopsInclude = { stops: { orderBy: { sequence: 'asc' as const } } };
 const fullInclude = {
   stops: { orderBy: { sequence: 'asc' as const } },
   trips: { include: { customer: true } },
+  zone: { select: { id: true, name: true } },
 };
 
 @Injectable()
@@ -16,11 +18,13 @@ export class TripGroupsService {
     private prisma: PrismaService,
     private publisher: RealtimePublisher,
     private wallet: WalletService,
+    private zones: ZonesService,
   ) {}
 
-  async findAvailable() {
+  async findAvailable(userId: string) {
+    const driver = await this.prisma.driver.findUnique({ where: { userId }, select: { zoneId: true } });
     return this.prisma.tripGroup.findMany({
-      where: { status: 'MATCHING' },
+      where: { status: 'MATCHING', ...(driver?.zoneId ? { zoneId: driver.zoneId } : {}) },
       orderBy: { createdAt: 'asc' },
       include: fullInclude,
     });
@@ -55,6 +59,9 @@ export class TripGroupsService {
     }
     if (vehicle.seats < group.seatsUsed) {
       throw new BadRequestException('Xe của bạn không đủ chỗ cho nhóm chuyến này');
+    }
+    if (!this.zones.driverAllowed(driver.zoneId, group.zoneId)) {
+      throw new BadRequestException('Nhóm chuyến này nằm ngoài khu vực hoạt động của bạn');
     }
 
     const now = new Date();
