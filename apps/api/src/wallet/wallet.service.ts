@@ -6,8 +6,10 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import type { TopupCallbackDto, TopupDto, WithdrawDto, ResolveWithdrawalDto } from './wallet.dto.js';
 import { VnpayService, VNPAY_RSP, type VnpayCallbackParams } from './vnpay.service.js';
+import { MomoService, type MomoCallbackParams } from './momo.service.js';
 
 type Tx = Prisma.TransactionClient;
+export type Gateway = 'vnpay' | 'momo' | 'mock';
 type TxType = 'TOPUP' | 'TRIP_PAYMENT' | 'TRIP_EARNING' | 'COMMISSION' | 'WITHDRAWAL' | 'REFUND' | 'ADJUSTMENT';
 
 export class InsufficientBalance extends BadRequestException {
@@ -29,23 +31,35 @@ export class WalletService {
   private readonly logger = new Logger(WalletService.name);
   readonly commissionRate: number;
   private readonly webhookSecret: string;
-  /** 'vnpay' when credentials are present, otherwise the clickable mock gateway. */
-  readonly gateway: 'vnpay' | 'mock';
+  /** Default gateway: PAYMENT_GATEWAY if its credentials exist, else the first configured real one, else mock. */
+  readonly gateway: Gateway;
+  private readonly apiPublicUrl: string;
 
   constructor(
     private prisma: PrismaService,
     private publisher: RealtimePublisher,
     private vnpay: VnpayService,
+    private momo: MomoService,
     config: ConfigService,
   ) {
     this.commissionRate = Number(config.get('COMMISSION_RATE') ?? 0.2);
     this.webhookSecret = config.get<string>('PAYMENT_WEBHOOK_SECRET') ?? 'dev-webhook-secret';
-    const wanted = (config.get<string>('PAYMENT_GATEWAY') ?? 'vnpay').toLowerCase();
-    this.gateway = wanted === 'vnpay' && this.vnpay.configured ? 'vnpay' : 'mock';
-    if (wanted === 'vnpay' && !this.vnpay.configured) {
-      this.logger.warn('PAYMENT_GATEWAY=vnpay but VNPAY_TMN_CODE/VNPAY_HASH_SECRET missing — using mock gateway');
+    this.apiPublicUrl = (config.get<string>('API_PUBLIC_URL') ?? 'http://localhost:3001').replace(/\/$/, '');
+    const wanted = (config.get<string>('PAYMENT_GATEWAY') ?? 'vnpay').toLowerCase() as Gateway;
+    const available = this.availableGateways();
+    this.gateway = available.includes(wanted) ? wanted : (available.find((g) => g !== 'mock') ?? 'mock');
+    if (wanted !== this.gateway) {
+      this.logger.warn(`PAYMENT_GATEWAY=${wanted} not configured — default gateway is ${this.gateway}`);
     }
-    this.logger.log(`Payment gateway: ${this.gateway}`);
+    this.logger.log(`Payment gateways: ${available.join(', ')} (default ${this.gateway})`);
+  }
+
+  availableGateways(): Gateway[] {
+    const list: Gateway[] = [];
+    if (this.vnpay.configured) list.push('vnpay');
+    if (this.momo.configured) list.push('momo');
+    if (process.env.NODE_ENV !== 'production') list.push('mock');
+    return list;
   }
 
   // ---------------- ledger primitives ----------------
@@ -127,7 +141,31 @@ export class WalletService {
       },
     });
 
-    if (this.gateway === 'vnpay') {
+    const available = this.availableGateways();
+    const gateway: Gateway = dto.gateway && available.includes(dto.gateway) ? dto.gateway : this.gateway;
+
+    if (gateway === 'momo') {
+      try {
+        const momo = await this.momo.createPayment({
+          orderId: tx.id,
+          requestId: tx.id,
+          amountVnd: dto.amount,
+          orderInfo: `Nap vi GhepGo ${dto.amount.toLocaleString('vi-VN')} d`,
+          redirectUrl: `${baseUrl}/wallet/momo-return`,
+          ipnUrl: `${this.apiPublicUrl}/api/wallet/momo/ipn`,
+        });
+        await this.prisma.walletTransaction.update({ where: { id: tx.id }, data: { reference: 'MOMO' } });
+        return { txId: tx.id, amount: dto.amount, paymentUrl: momo.payUrl, deeplink: momo.deeplink, qrCodeUrl: momo.qrCodeUrl, gateway: 'MOMO' as const };
+      } catch (err) {
+        await this.prisma.walletTransaction.update({
+          where: { id: tx.id },
+          data: { status: 'FAILED', description: `${tx.description} (MoMo: ${(err as Error).message})` },
+        });
+        throw new BadRequestException('Không tạo được giao dịch MoMo, vui lòng thử lại hoặc chọn cổng khác');
+      }
+    }
+
+    if (gateway === 'vnpay') {
       const paymentUrl = this.vnpay.buildPaymentUrl({
         txnRef: tx.id,
         amountVnd: dto.amount,
@@ -182,6 +220,56 @@ export class WalletService {
       this.logger.error(`VNPay IPN ${txId} failed: ${(err as Error).message}`);
       return VNPAY_RSP.ERROR;
     }
+  }
+
+  /**
+   * MoMo IPN (server-to-server POST JSON). Credits the wallet once; the HTTP
+   * layer answers 204 regardless so MoMo does not retry forever on our errors.
+   */
+  async handleMomoIpn(params: MomoCallbackParams): Promise<{ accepted: boolean; reason: string }> {
+    if (!this.momo.verify(params)) return { accepted: false, reason: 'invalid_signature' };
+    const txId = String(params.orderId ?? '');
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const pending = await tx.walletTransaction.findUnique({ where: { id: txId }, include: { wallet: true } });
+        if (!pending || pending.type !== 'TOPUP') return { accepted: false, reason: 'not_found' };
+        if (this.momo.amountVnd(params) !== Number(pending.amount)) return { accepted: false, reason: 'amount_mismatch' };
+        if (pending.status !== 'PENDING') return { accepted: true, reason: 'already_processed' };
+
+        const ref = `MOMO:${params.transId ?? ''}:${params.payType ?? ''}`;
+        if (!this.momo.isSuccess(params)) {
+          await tx.walletTransaction.update({
+            where: { id: pending.id },
+            data: { status: 'FAILED', reference: ref, description: `${pending.description} (MoMo ${params.resultCode}: ${params.message ?? ''})` },
+          });
+          return { accepted: true, reason: 'failed_payment' };
+        }
+        const wallet = await this.lockWallet(tx, pending.wallet.userId);
+        const after = wallet.balance.plus(pending.amount);
+        await tx.wallet.update({ where: { id: wallet.id }, data: { balance: after } });
+        await tx.walletTransaction.update({ where: { id: pending.id }, data: { status: 'COMPLETED', balanceAfter: after, reference: ref } });
+        return { accepted: true, reason: 'credited' };
+      });
+    } catch (err) {
+      this.logger.error(`MoMo IPN ${txId} failed: ${(err as Error).message}`);
+      return { accepted: false, reason: 'error' };
+    }
+  }
+
+  /** MoMo redirect (browser). Same idempotent path as the IPN; only reports the outcome. */
+  async handleMomoReturn(params: MomoCallbackParams) {
+    if (!this.momo.verify(params)) return { ok: false, code: 'invalid_signature', message: 'Chữ ký không hợp lệ' };
+    const ipn = await this.handleMomoIpn(params);
+    const tx = await this.prisma.walletTransaction.findUnique({ where: { id: String(params.orderId ?? '') } });
+    const success = this.momo.isSuccess(params);
+    return {
+      ok: success && ipn.accepted,
+      code: String(params.resultCode ?? ''),
+      message: success ? 'Nạp ví thành công' : Number(params.resultCode) === 1006 ? 'Bạn đã huỷ giao dịch tại MoMo' : `Thanh toán không thành công (${params.message ?? params.resultCode})`,
+      txId: params.orderId,
+      amount: this.momo.amountVnd(params),
+      status: tx?.status ?? null,
+    };
   }
 
   /**

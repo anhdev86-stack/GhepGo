@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, type Gateway } from "@/lib/api";
 
 const TX_LABEL: Record<string, string> = {
   TOPUP: "Nạp ví",
@@ -15,6 +15,7 @@ const TX_LABEL: Record<string, string> = {
   ADJUSTMENT: "Điều chỉnh",
 };
 const W_LABEL: Record<string, string> = { REQUESTED: "Chờ duyệt", APPROVED: "Đã duyệt", PAID: "Đã chuyển", REJECTED: "Từ chối" };
+const GATEWAY_LABEL: Record<Gateway, string> = { vnpay: "VNPay", momo: "MoMo", mock: "Cổng giả lập" };
 const vnd = (n: unknown) => Number(n).toLocaleString("vi-VN") + " đ";
 
 export default function WalletPage() {
@@ -29,12 +30,19 @@ export default function WalletPage() {
   const [bankAccount, setBankAccount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [gateway, setGateway] = useState<"vnpay" | "mock" | null>(null);
+  const [gateway, setGateway] = useState<Gateway | null>(null);
+  const [gateways, setGateways] = useState<Gateway[]>([]);
 
   const load = useCallback(() => {
     if (!token || !user) return;
     api.wallet(token).then(setWallet).catch(() => {});
-    api.walletGateway(token).then((g) => setGateway(g.gateway)).catch(() => {});
+    api
+      .walletGateway(token)
+      .then((g) => {
+        setGateways(g.available);
+        setGateway((cur) => cur ?? g.gateway);
+      })
+      .catch(() => {});
     api.walletTransactions(token).then(setTxs).catch(() => {});
     if (user.role === "DRIVER") {
       api.myDriverStats(token).then(setStats).catch(() => {});
@@ -66,7 +74,7 @@ export default function WalletPage() {
 
   const topup = () =>
     run(async () => {
-      const res = await api.topup(token!, amount);
+      const res = await api.topup(token!, amount, gateway ?? undefined);
       window.location.href = res.paymentUrl;
     });
 
@@ -115,14 +123,28 @@ export default function WalletPage() {
                 </button>
               ))}
               <input type="number" className="border rounded px-2 py-1 w-32 text-sm" value={amount} min={10000} step={10000} onChange={(e) => setAmount(Number(e.target.value))} />
-              <button onClick={topup} disabled={busy} className="bg-blue-600 text-white rounded px-3 py-1.5 text-sm disabled:opacity-50">
-                {gateway === "vnpay" ? "Thanh toán qua VNPay" : "Thanh toán qua cổng"}
-              </button>
             </div>
+            {gateways.length > 1 && (
+              <div className="flex gap-2 mt-3">
+                {gateways.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setGateway(g)}
+                    className={`px-3 py-1.5 rounded border text-sm ${gateway === g ? "border-blue-600 bg-blue-50 text-blue-700" : ""}`}
+                  >
+                    {GATEWAY_LABEL[g]}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={topup} disabled={busy || !gateway} className="mt-3 bg-blue-600 text-white rounded px-4 py-2 text-sm disabled:opacity-50">
+              {gateway ? `Thanh toán qua ${GATEWAY_LABEL[gateway]}` : "Đang tải cổng thanh toán..."}
+            </button>
             <p className="text-xs text-slate-500 mt-2">
-              {gateway === "vnpay"
-                ? "Bạn sẽ được chuyển tới trang VNPay (sandbox) để thanh toán; số dư cập nhật ngay khi VNPay xác nhận."
-                : "Chưa cấu hình VNPay nên đang dùng cổng thanh toán giả lập (chỉ dành cho dev)."}
+              {gateway === "vnpay" && "Bạn sẽ được chuyển tới trang VNPay để thanh toán; số dư cập nhật ngay khi VNPay xác nhận."}
+              {gateway === "momo" && "Bạn sẽ được chuyển tới trang MoMo (quét QR hoặc mở app); số dư cập nhật ngay khi MoMo xác nhận."}
+              {gateway === "mock" && "Cổng thanh toán giả lập, chỉ dành cho môi trường dev."}
             </p>
           </>
         ) : (

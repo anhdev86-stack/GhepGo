@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -42,10 +42,22 @@ export class WalletController {
     return this.wallet.handleVnpayReturn(params);
   }
 
+  /** MoMo IPN — POST JSON; MoMo expects HTTP 204 with an empty body. */
+  @Post('momo/ipn')
+  @HttpCode(204)
+  async momoIpn(@Body() params: Record<string, string | number>) {
+    await this.wallet.handleMomoIpn(params);
+  }
+
+  @Get('momo/return')
+  momoReturn(@Query() params: Record<string, string>) {
+    return this.wallet.handleMomoReturn(params);
+  }
+
   @Get('gateway')
   @UseGuards(JwtAuthGuard)
   gateway() {
-    return { gateway: this.wallet.gateway };
+    return { gateway: this.wallet.gateway, available: this.wallet.availableGateways() };
   }
 
   /** Gateway IPN (no JWT — authenticated by HMAC signature). */

@@ -33,6 +33,8 @@ async function request<T>(
   return data as T;
 }
 
+export type Gateway = "vnpay" | "momo" | "mock";
+
 export interface AuthResponse {
   accessToken: string;
   user: { id: string; phone: string; role: "CUSTOMER" | "DRIVER" | "ADMIN"; fullName: string };
@@ -99,10 +101,15 @@ export const api = {
 
   // ---- wallet ----
   wallet: (token: string) => request<any>("/wallet/me", { token }),
-  walletGateway: (token: string) => request<{ gateway: "vnpay" | "mock" }>("/wallet/gateway", { token }),
+  walletGateway: (token: string) =>
+    request<{ gateway: Gateway; available: Gateway[] }>("/wallet/gateway", { token }),
   walletTransactions: (token: string) => request<any[]>("/wallet/me/transactions", { token }),
-  topup: (token: string, amount: number) =>
-    request<{ txId: string; amount: number; paymentUrl: string }>("/wallet/topup", { method: "POST", token, body: { amount } }),
+  topup: (token: string, amount: number, gateway?: Gateway) =>
+    request<{ txId: string; amount: number; paymentUrl: string; gateway: string }>("/wallet/topup", {
+      method: "POST",
+      token,
+      body: { amount, ...(gateway ? { gateway } : {}) },
+    }),
   mockSign: (token: string, body: { txId: string; result: "SUCCESS" | "FAILED"; gatewayRef: string }) =>
     request<{ signature: string }>("/wallet/topup/mock-sign", { method: "POST", token, body }),
   topupCallback: (body: { txId: string; result: "SUCCESS" | "FAILED"; gatewayRef: string; signature: string }) =>

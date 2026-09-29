@@ -7,6 +7,11 @@ export class TopupDto {
   @Min(10000)
   @Max(50_000_000)
   amount: number;
+
+  /** Preferred gateway; falls back to the server default when omitted or unavailable. */
+  @IsOptional()
+  @IsEnum(['vnpay', 'momo', 'mock'])
+  gateway?: 'vnpay' | 'momo' | 'mock';
 }
 
 /** Mimics a VNPay/Momo IPN callback; signed with PAYMENT_WEBHOOK_SECRET (HMAC-SHA256). */

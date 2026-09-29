@@ -119,7 +119,11 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
   `vpcpay.html` với tham số ký HMAC-SHA512 → VNPay gọi **IPN** `GET /api/wallet/vnpay/ipn` (verify chữ ký, khớp số tiền,
   cộng ví đúng 1 lần, trả `RspCode` 00/01/02/04/97) và redirect khách về **Return URL** `/wallet/vnpay-return` trên web.
   Return URL cũng đi qua cùng đường xử lý idempotent nên sandbox chạy được cả khi IPN chưa tới localhost.
-  Chưa có `VNPAY_TMN_CODE`/`VNPAY_HASH_SECRET` thì tự dùng cổng giả lập `/wallet/mock-checkout` (dev).
+- Nạp ví qua **MoMo** (`src/wallet/momo.service.ts`, Payment API v2 `captureWallet`): API gọi
+  `POST {MOMO_ENDPOINT}/v2/gateway/api/create` (chữ ký HMAC-SHA256) lấy `payUrl`/`deeplink`/QR → MoMo POST JSON
+  tới IPN `/api/wallet/momo/ipn` (verify chữ ký, khớp tiền, cộng ví 1 lần, trả 204) và redirect về `/wallet/momo-return`.
+- Khách chọn cổng khi nạp (`POST /wallet/topup {amount, gateway}`); `GET /wallet/gateway` trả cổng mặc định + danh sách
+  cổng đã cấu hình. Không có credentials nào thì tự dùng cổng giả lập `/wallet/mock-checkout` (chỉ ngoài production).
 - Rút tiền: giữ tiền ngay khi tài xế yêu cầu, admin `APPROVED → PAID` hoặc `REJECTED` (hoàn tiền), mỗi tài xế 1 yêu cầu mở.
 
 ### Vận hành đội xe (`src/fleet`)
@@ -208,7 +212,9 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **VNPay**: đăng ký merchant sandbox tại https://sandbox.vnpayment.vn/devreg/ , điền `VNPAY_TMN_CODE` +
   `VNPAY_HASH_SECRET` vào `apps/api/.env`, khai báo IPN URL `<API_PUBLIC_URL>/api/wallet/vnpay/ipn` trong portal
   (local dev cần ngrok/cloudflared). Thẻ test sandbox: NCB 9704198526191432198, NGUYEN VAN A, 07/15, OTP 123456.
-  Sau đó tích hợp thêm Momo nếu cần.
+- **MoMo**: dùng bộ credentials test công khai trong tài liệu MoMo (partnerCode `MOMO`, accessKey `F8BBA842ECF85`,
+  secretKey `K951B6PE1waDMi640xX08PD3vg6EkVlz`) điền vào `MOMO_*` để chạy sandbox; production đăng ký tại
+  https://business.momo.vn . IPN MoMo được gửi kèm mỗi request nên chỉ cần `API_PUBLIC_URL` truy cập được từ Internet.
 - **Bản đồ**: lấy Goong API key (hoặc Mapbox) cho production; vẽ bản đồ/polyline trên web & mobile (hiện chỉ toạ độ + link).
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
