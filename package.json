@@ -1,0 +1,13 @@
+{
+  "name": "ghepgo",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev:api": "pnpm --filter @ghepgo/api start:dev",
+    "dev:web": "pnpm --filter @ghepgo/web dev",
+    "build": "pnpm -r build"
+  }
+}

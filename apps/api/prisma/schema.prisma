@@ -1,0 +1,226 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+// -------------------- Enums --------------------
+
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  ON_TRIP
+}
+
+enum TripType {
+  PRIVATE
+  SHARED
+}
+
+enum TripStatus {
+  REQUESTED
+  ASSIGNED
+  ACCEPTED
+  REJECTED
+  EN_ROUTE_TO_PICKUP
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TripGroupStatus {
+  MATCHING
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum StopKind {
+  PICKUP
+  DROPOFF
+}
+
+enum PaymentMethod {
+  CASH
+  WALLET
+  CARD
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// -------------------- Core models --------------------
+
+model User {
+  id           String   @id @default(cuid())
+  phone        String   @unique
+  passwordHash String
+  fullName     String
+  role         UserRole @default(CUSTOMER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  driver        Driver?
+  tripsAsRider  Trip[]  @relation("CustomerTrips")
+  wallet        Wallet?
+
+  @@map("users")
+}
+
+model Driver {
+  id             String       @id @default(cuid())
+  userId         String       @unique
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseNumber  String       @unique
+  status         DriverStatus @default(OFFLINE)
+  currentLat     Float?
+  currentLng     Float?
+  ratingAvg      Float        @default(5.0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  vehicles   Vehicle[]
+  trips      Trip[]
+  tripGroups TripGroup[]
+
+  @@map("drivers")
+}
+
+model Vehicle {
+  id           String   @id @default(cuid())
+  driverId     String
+  driver       Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  plateNumber  String   @unique
+  make         String
+  model        String
+  seats        Int      @default(4)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  trips      Trip[]
+  tripGroups TripGroup[]
+
+  @@map("vehicles")
+}
+
+model Trip {
+  id             String     @id @default(cuid())
+  customerId     String
+  customer       User       @relation("CustomerTrips", fields: [customerId], references: [id])
+  driverId       String?
+  driver         Driver?    @relation(fields: [driverId], references: [id])
+  vehicleId      String?
+  vehicle        Vehicle?   @relation(fields: [vehicleId], references: [id])
+
+  tripType       TripType   @default(PRIVATE)
+  status         TripStatus @default(REQUESTED)
+
+  groupId        String?
+  group          TripGroup? @relation(fields: [groupId], references: [id])
+  seatsRequested Int        @default(1)
+
+  pickupAddress  String
+  pickupLat      Float
+  pickupLng      Float
+  dropoffAddress String
+  dropoffLat     Float
+  dropoffLng     Float
+
+  distanceMeters Int?
+  durationSecs   Int?
+  fare           Decimal    @default(0) @db.Decimal(10, 2)
+
+  requestedAt    DateTime   @default(now())
+  acceptedAt     DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  cancelledAt    DateTime?
+
+  payment Payment?
+  stops   TripStop[]
+
+  @@index([status])
+  @@index([customerId])
+  @@index([driverId])
+  @@index([groupId])
+  @@map("trips")
+}
+
+model TripGroup {
+  id                  String          @id @default(cuid())
+  status              TripGroupStatus @default(MATCHING)
+  driverId            String?
+  driver              Driver?         @relation(fields: [driverId], references: [id])
+  vehicleId           String?
+  vehicle             Vehicle?        @relation(fields: [vehicleId], references: [id])
+  seatsTotal          Int
+  seatsUsed           Int             @default(0)
+  totalDistanceMeters Int?
+  currentStopIndex    Int             @default(0)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  trips Trip[]
+  stops TripStop[]
+
+  @@index([status])
+  @@map("trip_groups")
+}
+
+model TripStop {
+  id          String    @id @default(cuid())
+  groupId     String
+  group       TripGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  tripId      String
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  kind        StopKind
+  sequence    Int
+  address     String
+  lat         Float
+  lng         Float
+  completedAt DateTime?
+
+  @@unique([groupId, sequence])
+  @@index([tripId])
+  @@map("trip_stops")
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  tripId    String        @unique
+  trip      Trip          @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  amount    Decimal       @db.Decimal(10, 2)
+  method    PaymentMethod @default(CASH)
+  status    PaymentStatus @default(PENDING)
+  createdAt DateTime      @default(now())
+  paidAt    DateTime?
+
+  @@map("payments")
+}
+
+model Wallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance   Decimal  @default(0) @db.Decimal(12, 2)
+  updatedAt DateTime @updatedAt
+
+  @@map("wallets")
+}
