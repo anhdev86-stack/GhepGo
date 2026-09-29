@@ -29,10 +29,12 @@ export default function WalletPage() {
   const [bankAccount, setBankAccount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [gateway, setGateway] = useState<"vnpay" | "mock" | null>(null);
 
   const load = useCallback(() => {
     if (!token || !user) return;
     api.wallet(token).then(setWallet).catch(() => {});
+    api.walletGateway(token).then((g) => setGateway(g.gateway)).catch(() => {});
     api.walletTransactions(token).then(setTxs).catch(() => {});
     if (user.role === "DRIVER") {
       api.myDriverStats(token).then(setStats).catch(() => {});
@@ -114,10 +116,14 @@ export default function WalletPage() {
               ))}
               <input type="number" className="border rounded px-2 py-1 w-32 text-sm" value={amount} min={10000} step={10000} onChange={(e) => setAmount(Number(e.target.value))} />
               <button onClick={topup} disabled={busy} className="bg-blue-600 text-white rounded px-3 py-1.5 text-sm disabled:opacity-50">
-                Thanh toán qua cổng
+                {gateway === "vnpay" ? "Thanh toán qua VNPay" : "Thanh toán qua cổng"}
               </button>
             </div>
-            <p className="text-xs text-slate-500 mt-2">Môi trường dev dùng cổng thanh toán giả lập; production sẽ chuyển sang VNPay/Momo với cùng luồng callback.</p>
+            <p className="text-xs text-slate-500 mt-2">
+              {gateway === "vnpay"
+                ? "Bạn sẽ được chuyển tới trang VNPay (sandbox) để thanh toán; số dư cập nhật ngay khi VNPay xác nhận."
+                : "Chưa cấu hình VNPay nên đang dùng cổng thanh toán giả lập (chỉ dành cho dev)."}
+            </p>
           </>
         ) : (
           <>

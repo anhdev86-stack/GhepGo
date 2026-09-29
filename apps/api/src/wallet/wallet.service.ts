@@ -5,6 +5,7 @@ import { Prisma } from '../../generated/prisma/index.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import type { TopupCallbackDto, TopupDto, WithdrawDto, ResolveWithdrawalDto } from './wallet.dto.js';
+import { VnpayService, VNPAY_RSP, type VnpayCallbackParams } from './vnpay.service.js';
 
 type Tx = Prisma.TransactionClient;
 type TxType = 'TOPUP' | 'TRIP_PAYMENT' | 'TRIP_EARNING' | 'COMMISSION' | 'WITHDRAWAL' | 'REFUND' | 'ADJUSTMENT';
@@ -28,14 +29,23 @@ export class WalletService {
   private readonly logger = new Logger(WalletService.name);
   readonly commissionRate: number;
   private readonly webhookSecret: string;
+  /** 'vnpay' when credentials are present, otherwise the clickable mock gateway. */
+  readonly gateway: 'vnpay' | 'mock';
 
   constructor(
     private prisma: PrismaService,
     private publisher: RealtimePublisher,
+    private vnpay: VnpayService,
     config: ConfigService,
   ) {
     this.commissionRate = Number(config.get('COMMISSION_RATE') ?? 0.2);
     this.webhookSecret = config.get<string>('PAYMENT_WEBHOOK_SECRET') ?? 'dev-webhook-secret';
+    const wanted = (config.get<string>('PAYMENT_GATEWAY') ?? 'vnpay').toLowerCase();
+    this.gateway = wanted === 'vnpay' && this.vnpay.configured ? 'vnpay' : 'mock';
+    if (wanted === 'vnpay' && !this.vnpay.configured) {
+      this.logger.warn('PAYMENT_GATEWAY=vnpay but VNPAY_TMN_CODE/VNPAY_HASH_SECRET missing — using mock gateway');
+    }
+    this.logger.log(`Payment gateway: ${this.gateway}`);
   }
 
   // ---------------- ledger primitives ----------------
@@ -104,7 +114,7 @@ export class WalletService {
    * where the VNPay/Momo order is created; here the URL points at the mock
    * checkout page which calls back `/wallet/topup/callback`.
    */
-  async createTopup(userId: string, dto: TopupDto, baseUrl: string) {
+  async createTopup(userId: string, dto: TopupDto, baseUrl: string, ipAddr = '127.0.0.1') {
     const wallet = await this.prisma.wallet.upsert({ where: { userId }, create: { userId, balance: 0 }, update: {} });
     const tx = await this.prisma.walletTransaction.create({
       data: {
@@ -116,11 +126,82 @@ export class WalletService {
         description: `Nạp ví ${dto.amount.toLocaleString('vi-VN')} đ`,
       },
     });
+
+    if (this.gateway === 'vnpay') {
+      const paymentUrl = this.vnpay.buildPaymentUrl({
+        txnRef: tx.id,
+        amountVnd: dto.amount,
+        orderInfo: `Nap vi GhepGo ${tx.id}`,
+        ipAddr,
+        returnUrl: `${baseUrl}/wallet/vnpay-return`,
+      });
+      await this.prisma.walletTransaction.update({ where: { id: tx.id }, data: { reference: 'VNPAY' } });
+      return { txId: tx.id, amount: dto.amount, paymentUrl, gateway: 'VNPAY' as const };
+    }
+
     return {
       txId: tx.id,
       amount: dto.amount,
       paymentUrl: `${baseUrl}/wallet/mock-checkout?txId=${tx.id}&amount=${dto.amount}`,
-      gateway: 'MOCK',
+      gateway: 'MOCK' as const,
+    };
+  }
+
+  /**
+   * VNPay IPN (server-to-server). Must always answer with a VNPay RspCode;
+   * the balance is credited exactly once (idempotent on replays).
+   */
+  async handleVnpayIpn(params: VnpayCallbackParams) {
+    if (!this.vnpay.verify(params)) return VNPAY_RSP.INVALID_CHECKSUM;
+    const txId = params.vnp_TxnRef ?? '';
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const pending = await tx.walletTransaction.findUnique({ where: { id: txId }, include: { wallet: true } });
+        if (!pending || pending.type !== 'TOPUP') return VNPAY_RSP.NOT_FOUND;
+        if (this.vnpay.amountVnd(params) !== Number(pending.amount)) return VNPAY_RSP.INVALID_AMOUNT;
+        if (pending.status !== 'PENDING') return VNPAY_RSP.ALREADY_CONFIRMED;
+
+        const ref = `VNPAY:${params.vnp_TransactionNo ?? ''}:${params.vnp_BankCode ?? ''}`;
+        if (!this.vnpay.isSuccess(params)) {
+          await tx.walletTransaction.update({
+            where: { id: pending.id },
+            data: { status: 'FAILED', reference: ref, description: `${pending.description} (VNPay ${params.vnp_ResponseCode})` },
+          });
+          return VNPAY_RSP.OK;
+        }
+        const wallet = await this.lockWallet(tx, pending.wallet.userId);
+        const after = wallet.balance.plus(pending.amount);
+        await tx.wallet.update({ where: { id: wallet.id }, data: { balance: after } });
+        await tx.walletTransaction.update({
+          where: { id: pending.id },
+          data: { status: 'COMPLETED', balanceAfter: after, reference: ref },
+        });
+        return VNPAY_RSP.OK;
+      });
+    } catch (err) {
+      this.logger.error(`VNPay IPN ${txId} failed: ${(err as Error).message}`);
+      return VNPAY_RSP.ERROR;
+    }
+  }
+
+  /**
+   * VNPay Return URL (browser redirect). Only reports the outcome to the user;
+   * the IPN is the source of truth. In sandbox the IPN may not reach a
+   * localhost API, so a verified successful return also credits the wallet
+   * (same idempotent path), which is safe because the signature is checked.
+   */
+  async handleVnpayReturn(params: VnpayCallbackParams) {
+    if (!this.vnpay.verify(params)) return { ok: false, code: '97', message: 'Chữ ký không hợp lệ' };
+    const ipn = await this.handleVnpayIpn(params);
+    const tx = await this.prisma.walletTransaction.findUnique({ where: { id: params.vnp_TxnRef ?? '' } });
+    const success = this.vnpay.isSuccess(params);
+    return {
+      ok: success && (ipn.RspCode === '00' || ipn.RspCode === '02'),
+      code: params.vnp_ResponseCode,
+      message: success ? 'Nạp ví thành công' : `Thanh toán không thành công (mã ${params.vnp_ResponseCode})`,
+      txId: params.vnp_TxnRef,
+      amount: this.vnpay.amountVnd(params),
+      status: tx?.status ?? null,
     };
   }
 

@@ -115,8 +115,11 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
   (`COMMISSION_RATE`, mặc định 20%), payment `PAID`; ví khách không đủ → tự chuyển sang **CASH**.
   **CASH** tài xế thu tiền, ví tài xế bị trừ hoa hồng (được phép âm = nợ nền tảng), payment `PENDING`
   tới khi tài xế bấm xác nhận đã thu.
-- Nạp ví: tạo giao dịch `PENDING` → cổng thanh toán gọi callback có chữ ký → cộng tiền. Dev dùng trang
-  `/wallet/mock-checkout` trên web để giả lập; production chỉ cần thay bước tạo URL + verify chữ ký theo VNPay/Momo.
+- Nạp ví qua **VNPay** (`src/wallet/vnpay.service.ts`, chuẩn v2.1.0): tạo giao dịch `PENDING` → redirect sang
+  `vpcpay.html` với tham số ký HMAC-SHA512 → VNPay gọi **IPN** `GET /api/wallet/vnpay/ipn` (verify chữ ký, khớp số tiền,
+  cộng ví đúng 1 lần, trả `RspCode` 00/01/02/04/97) và redirect khách về **Return URL** `/wallet/vnpay-return` trên web.
+  Return URL cũng đi qua cùng đường xử lý idempotent nên sandbox chạy được cả khi IPN chưa tới localhost.
+  Chưa có `VNPAY_TMN_CODE`/`VNPAY_HASH_SECRET` thì tự dùng cổng giả lập `/wallet/mock-checkout` (dev).
 - Rút tiền: giữ tiền ngay khi tài xế yêu cầu, admin `APPROVED → PAID` hoặc `REJECTED` (hoàn tiền), mỗi tài xế 1 yêu cầu mở.
 
 ### Vận hành đội xe (`src/fleet`)
@@ -202,7 +205,10 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 
 ## Roadmap (việc còn lại)
 
-- **Cổng thanh toán thật**: tích hợp VNPay/Momo sandbox vào `WalletService.createTopup` + verify chữ ký theo tài liệu cổng.
+- **VNPay**: đăng ký merchant sandbox tại https://sandbox.vnpayment.vn/devreg/ , điền `VNPAY_TMN_CODE` +
+  `VNPAY_HASH_SECRET` vào `apps/api/.env`, khai báo IPN URL `<API_PUBLIC_URL>/api/wallet/vnpay/ipn` trong portal
+  (local dev cần ngrok/cloudflared). Thẻ test sandbox: NCB 9704198526191432198, NGUYEN VAN A, 07/15, OTP 123456.
+  Sau đó tích hợp thêm Momo nếu cần.
 - **Bản đồ**: lấy Goong API key (hoặc Mapbox) cho production; vẽ bản đồ/polyline trên web & mobile (hiện chỉ toạ độ + link).
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.

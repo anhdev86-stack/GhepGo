@@ -99,6 +99,7 @@ export const api = {
 
   // ---- wallet ----
   wallet: (token: string) => request<any>("/wallet/me", { token }),
+  walletGateway: (token: string) => request<{ gateway: "vnpay" | "mock" }>("/wallet/gateway", { token }),
   walletTransactions: (token: string) => request<any[]>("/wallet/me/transactions", { token }),
   topup: (token: string, amount: number) =>
     request<{ txId: string; amount: number; paymentUrl: string }>("/wallet/topup", { method: "POST", token, body: { amount } }),

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Ip, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -25,9 +25,27 @@ export class WalletController {
 
   @Post('topup')
   @UseGuards(JwtAuthGuard)
-  topup(@CurrentUser() user: AuthUser, @Body() dto: TopupDto, @Headers('origin') origin?: string) {
-    const base = origin ?? process.env.WEB_URL ?? 'http://localhost:3000';
-    return this.wallet.createTopup(user.userId, dto, base);
+  topup(@CurrentUser() user: AuthUser, @Body() dto: TopupDto, @Ip() ip: string, @Headers('origin') origin?: string) {
+    const base = process.env.WEB_URL ?? origin ?? 'http://localhost:3000';
+    return this.wallet.createTopup(user.userId, dto, base, ip?.replace('::ffff:', '') || '127.0.0.1');
+  }
+
+  /** VNPay IPN — VNPay calls this server-to-server with GET query params. */
+  @Get('vnpay/ipn')
+  vnpayIpn(@Query() params: Record<string, string>) {
+    return this.wallet.handleVnpayIpn(params);
+  }
+
+  /** VNPay Return URL — the web page forwards the redirect query here to show the result. */
+  @Get('vnpay/return')
+  vnpayReturn(@Query() params: Record<string, string>) {
+    return this.wallet.handleVnpayReturn(params);
+  }
+
+  @Get('gateway')
+  @UseGuards(JwtAuthGuard)
+  gateway() {
+    return { gateway: this.wallet.gateway };
   }
 
   /** Gateway IPN (no JWT — authenticated by HMAC signature). */
