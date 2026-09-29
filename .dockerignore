@@ -7,4 +7,6 @@
 *.log
 **/.env
 **/.env.local
-apps/mobile
+# mobile is not built in Docker, but its manifest is needed for pnpm workspace resolution
+apps/mobile/*
+!apps/mobile/package.json
