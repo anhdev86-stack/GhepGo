@@ -6,6 +6,11 @@ export enum TripTypeDto {
   SHARED = 'SHARED',
 }
 
+export enum PaymentMethodDto {
+  CASH = 'CASH',
+  WALLET = 'WALLET',
+}
+
 export class CreateTripDto {
   @IsString()
   @IsNotEmpty()
@@ -36,4 +41,8 @@ export class CreateTripDto {
   @Min(1)
   @Max(3)
   seatsRequested?: number;
+
+  @IsOptional()
+  @IsEnum(PaymentMethodDto)
+  paymentMethod?: PaymentMethodDto;
 }

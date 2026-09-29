@@ -11,36 +11,57 @@ import {
 } from "react-native";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../contexts/auth-context";
+import { useDriverLocationStream, useRealtime, useSocketEvent, WS } from "../lib/realtime";
 
 export default function HomeScreen() {
   const { token, user, isLoading, logout } = useAuth();
+  const { socket, connected } = useRealtime(token);
 
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [available, setAvailable] = useState<any[]>([]);
-  const [status, setStatus] = useState<"OFFLINE" | "AVAILABLE">("OFFLINE");
+  const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [myGroups, setMyGroups] = useState<any[]>([]);
+  const [status, setStatus] = useState<"OFFLINE" | "AVAILABLE" | "ON_TRIP">("OFFLINE");
   const [plateNumber, setPlateNumber] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  const { lastFix, geoError } = useDriverLocationStream(socket, status !== "OFFLINE");
+
   const refresh = async () => {
     if (!token) return;
     try {
-      const [v, a] = await Promise.all([api.myVehicles(token), api.availableTrips(token)]);
+      const [v, a, ag, mg] = await Promise.all([
+        api.myVehicles(token),
+        api.availableTrips(token),
+        api.availableGroups(token),
+        api.myGroups(token),
+      ]);
       setVehicles(v);
       setAvailable(a);
+      setAvailableGroups(ag);
+      setMyGroups(mg);
     } catch {
       // ignore transient polling errors
     }
   };
 
   useEffect(() => {
+    if (!token) return;
+    api.driverMe(token).then((d) => setStatus(d.status)).catch(() => {});
     refresh();
-    const interval = setInterval(refresh, 4000);
+    // Realtime events trigger refreshes; the interval is only a fallback.
+    const interval = setInterval(refresh, 20000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  useSocketEvent(socket, WS.TRIP_NEW, refresh);
+  useSocketEvent(socket, WS.TRIP_UPDATED, refresh);
+  useSocketEvent(socket, WS.GROUP_NEW, refresh);
+  useSocketEvent(socket, WS.GROUP_UPDATED, refresh);
 
   if (!isLoading && (!user || user.role !== "DRIVER")) {
     return <Redirect href="/login" />;
@@ -62,7 +83,7 @@ export default function HomeScreen() {
 
   const toggleStatus = async () => {
     if (!token) return;
-    const nextStatus = status === "AVAILABLE" ? "OFFLINE" : "AVAILABLE";
+    const nextStatus = status === "OFFLINE" ? "AVAILABLE" : "OFFLINE";
     try {
       await api.updateDriverStatus(token, nextStatus);
       setStatus(nextStatus);
@@ -76,6 +97,16 @@ export default function HomeScreen() {
     try {
       await api.acceptTrip(token, tripId);
       router.push({ pathname: "/trip/[id]", params: { id: tripId } });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Có lỗi xảy ra");
+    }
+  };
+
+  const acceptGroup = async (groupId: string) => {
+    if (!token) return;
+    try {
+      await api.acceptGroup(token, groupId);
+      router.push({ pathname: "/group/[id]", params: { id: groupId } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Có lỗi xảy ra");
     }
@@ -95,17 +126,75 @@ export default function HomeScreen() {
         <View style={{ gap: 16 }}>
           <View style={styles.card}>
             <View style={styles.row}>
-              <Text>Trạng thái: {status === "AVAILABLE" ? "Đang trực" : "Ngoại tuyến"}</Text>
+              <View style={{ flex: 1 }}>
+                <Text>
+                  Trạng thái:{" "}
+                  {status === "AVAILABLE" ? "Đang trực" : status === "ON_TRIP" ? "Đang chạy chuyến" : "Ngoại tuyến"}
+                </Text>
+                <Text style={styles.muted}>
+                  {connected ? "Realtime: kết nối" : "Realtime: mất kết nối"} ·{" "}
+                  {status === "OFFLINE"
+                    ? "GPS tắt"
+                    : lastFix
+                      ? `GPS ${lastFix.lat.toFixed(4)}, ${lastFix.lng.toFixed(4)}`
+                      : geoError ?? "Đang lấy GPS..."}
+                </Text>
+              </View>
               <Pressable
                 onPress={toggleStatus}
-                style={[styles.smallButton, { backgroundColor: status === "AVAILABLE" ? "#64748b" : "#16a34a" }]}
+                disabled={status === "ON_TRIP"}
+                style={[
+                  styles.smallButton,
+                  { backgroundColor: status === "OFFLINE" ? "#16a34a" : "#64748b", opacity: status === "ON_TRIP" ? 0.5 : 1 },
+                ]}
               >
-                <Text style={styles.buttonText}>
-                  {status === "AVAILABLE" ? "Ngừng trực" : "Bắt đầu trực"}
-                </Text>
+                <Text style={styles.buttonText}>{status === "OFFLINE" ? "Bắt đầu trực" : "Ngừng trực"}</Text>
               </Pressable>
             </View>
           </View>
+
+          {myGroups.length > 0 && (
+            <View>
+              <Text style={styles.sectionTitle}>Chuyến ghép đang thực hiện</Text>
+              {myGroups.map((g) => (
+                <Pressable
+                  key={g.id}
+                  style={styles.card}
+                  onPress={() => router.push({ pathname: "/group/[id]", params: { id: g.id } })}
+                >
+                  <Text style={styles.itemText}>
+                    {g.trips.length} khách · điểm dừng {g.currentStopIndex + 1}/{g.stops.length}
+                  </Text>
+                  <Text style={styles.muted}>
+                    Tiếp theo: {g.stops[g.currentStopIndex]?.kind === "PICKUP" ? "Đón" : "Trả"} ·{" "}
+                    {g.stops[g.currentStopIndex]?.address ?? "—"}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
+
+          {availableGroups.length > 0 && (
+            <View>
+              <Text style={styles.sectionTitle}>Nhóm xe ghép chờ tài xế</Text>
+              {availableGroups.map((g) => (
+                <View key={g.id} style={styles.card}>
+                  <Text style={styles.itemText}>
+                    {g.trips.length} khách · {g.seatsUsed} ghế · {((g.totalDistanceMeters ?? 0) / 1000).toFixed(1)} km ·{" "}
+                    {g.trips.reduce((s: number, t: any) => s + Number(t.fare), 0).toLocaleString("vi-VN")} đ
+                  </Text>
+                  {g.stops.map((s: any, i: number) => (
+                    <Text key={s.id} style={styles.muted}>
+                      {i + 1}. {s.kind === "PICKUP" ? "Đón" : "Trả"} · {s.address}
+                    </Text>
+                  ))}
+                  <Pressable style={[styles.button, { marginTop: 8 }]} onPress={() => acceptGroup(g.id)}>
+                    <Text style={styles.buttonText}>Nhận nhóm chuyến</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          )}
 
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>Xe của tôi</Text>
@@ -143,7 +232,7 @@ export default function HomeScreen() {
 
           {error && <Text style={styles.error}>{error}</Text>}
 
-          <Text style={styles.sectionTitle}>Chuyến khả dụng</Text>
+          <Text style={styles.sectionTitle}>Chuyến bao xe khả dụng</Text>
           {available.length === 0 && (
             <Text style={styles.muted}>Không có chuyến nào đang chờ</Text>
           )}
@@ -166,9 +255,14 @@ export default function HomeScreen() {
         </View>
       )}
       ListFooterComponent={
-        <Pressable onPress={logout} style={{ marginTop: 16 }}>
+        <View>
+          <Pressable style={[styles.button, { marginTop: 8, backgroundColor: "#0f766e" }]} onPress={() => router.push("/earnings")}>
+            <Text style={styles.buttonText}>Thu nhập & rút tiền</Text>
+          </Pressable>
+          <Pressable onPress={logout} style={{ marginTop: 16 }}>
           <Text style={{ color: "#dc2626", textAlign: "center" }}>Đăng xuất</Text>
-        </Pressable>
+          </Pressable>
+        </View>
       }
     />
   );

@@ -66,6 +66,35 @@ enum PaymentStatus {
   REFUNDED
 }
 
+enum WalletTxType {
+  TOPUP
+  TRIP_PAYMENT
+  TRIP_EARNING
+  COMMISSION
+  WITHDRAWAL
+  REFUND
+  ADJUSTMENT
+}
+
+enum WalletTxStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum WithdrawalStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PAID
+}
+
+enum ShiftStatus {
+  ACTIVE
+  ENDED
+}
+
 // -------------------- Core models --------------------
 
 model User {
@@ -80,6 +109,7 @@ model User {
   driver        Driver?
   tripsAsRider  Trip[]  @relation("CustomerTrips")
   wallet        Wallet?
+  ratingsGiven  Rating[]
 
   @@map("users")
 }
@@ -96,9 +126,16 @@ model Driver {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
-  vehicles   Vehicle[]
-  trips      Trip[]
-  tripGroups TripGroup[]
+  ratingCount    Int          @default(0)
+  zoneId         String?
+  zone           ServiceZone? @relation(fields: [zoneId], references: [id])
+
+  vehicles    Vehicle[]
+  trips       Trip[]
+  tripGroups  TripGroup[]
+  shifts      DriverShift[]
+  withdrawals Withdrawal[]
+  ratings     Rating[]
 
   @@map("drivers")
 }
@@ -153,8 +190,11 @@ model Trip {
   completedAt    DateTime?
   cancelledAt    DateTime?
 
+  paymentMethod  PaymentMethod @default(CASH)
+
   payment Payment?
   stops   TripStop[]
+  rating  Rating?
 
   @@index([status])
   @@index([customerId])
@@ -222,5 +262,86 @@ model Wallet {
   balance   Decimal  @default(0) @db.Decimal(12, 2)
   updatedAt DateTime @updatedAt
 
+  transactions WalletTransaction[]
+
   @@map("wallets")
+}
+
+/// Append-only ledger. `balanceAfter` lets us audit/reconcile without replaying.
+model WalletTransaction {
+  id           String         @id @default(cuid())
+  walletId     String
+  wallet       Wallet         @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type         WalletTxType
+  status       WalletTxStatus @default(COMPLETED)
+  /// Signed: credit > 0, debit < 0.
+  amount       Decimal        @db.Decimal(12, 2)
+  balanceAfter Decimal        @db.Decimal(12, 2)
+  tripId       String?
+  /// External reference (payment gateway txn id, withdrawal id...).
+  reference    String?
+  description  String?
+  createdAt    DateTime       @default(now())
+
+  @@index([walletId, createdAt])
+  @@index([tripId])
+  @@map("wallet_transactions")
+}
+
+model Withdrawal {
+  id          String           @id @default(cuid())
+  driverId    String
+  driver      Driver           @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  amount      Decimal          @db.Decimal(12, 2)
+  bankName    String
+  bankAccount String
+  status      WithdrawalStatus @default(REQUESTED)
+  note        String?
+  createdAt   DateTime         @default(now())
+  resolvedAt  DateTime?
+
+  @@index([status])
+  @@map("withdrawals")
+}
+
+model ServiceZone {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  centerLat Float
+  centerLng Float
+  radiusKm  Float
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  drivers Driver[]
+
+  @@map("service_zones")
+}
+
+model DriverShift {
+  id        String      @id @default(cuid())
+  driverId  String
+  driver    Driver      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  status    ShiftStatus @default(ACTIVE)
+  startedAt DateTime    @default(now())
+  endedAt   DateTime?
+
+  @@index([driverId, startedAt])
+  @@map("driver_shifts")
+}
+
+model Rating {
+  id         String   @id @default(cuid())
+  tripId     String   @unique
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  driverId   String
+  driver     Driver   @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   User     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  score      Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  @@index([driverId])
+  @@map("ratings")
 }

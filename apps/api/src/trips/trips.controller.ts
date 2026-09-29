@@ -53,6 +53,12 @@ export class TripsController {
     return this.tripsService.updateStatus(user.userId, id, dto);
   }
 
+  @Post(':id/cancel')
+  @Roles('CUSTOMER')
+  cancel(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.tripsService.cancelByCustomer(user.userId, id);
+  }
+
   @Get('all')
   @Roles('ADMIN')
   findAll() {

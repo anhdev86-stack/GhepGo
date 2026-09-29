@@ -61,4 +61,25 @@ export const api = {
       body: JSON.stringify({ status }),
       token,
     }),
+
+  driverMe: (token: string) => request<any>("/drivers/me", { token }),
+
+  availableGroups: (token: string) => request<any[]>("/trip-groups/available", { token }),
+
+  myGroups: (token: string) => request<any[]>("/trip-groups/mine", { token }),
+
+  acceptGroup: (token: string, groupId: string) =>
+    request<any>(`/trip-groups/${groupId}/accept`, { method: "POST", token }),
+
+  advanceGroup: (token: string, groupId: string) =>
+    request<any>(`/trip-groups/${groupId}/advance`, { method: "PATCH", token }),
+
+  wallet: (token: string) => request<any>("/wallet/me", { token }),
+  walletTransactions: (token: string) => request<any[]>("/wallet/me/transactions", { token }),
+  myDriverStats: (token: string) => request<any>("/drivers/me/stats", { token }),
+  myWithdrawals: (token: string) => request<any[]>("/wallet/withdrawals/mine", { token }),
+  requestWithdrawal: (token: string, data: { amount: number; bankName: string; bankAccount: string }) =>
+    request<any>("/wallet/withdrawals", { method: "POST", body: JSON.stringify(data), token }),
+  confirmCash: (token: string, tripId: string) =>
+    request<any>(`/wallet/trips/${tripId}/confirm-cash`, { method: "POST", token }),
 };

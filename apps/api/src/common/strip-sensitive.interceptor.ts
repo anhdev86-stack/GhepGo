@@ -8,6 +8,12 @@ function stripSensitive<T>(value: T): T {
     return value.map((item) => stripSensitive(item)) as unknown as T;
   }
   if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    // Prisma Decimal (and anything else with a custom JSON form) must not be
+    // deep-cloned field by field, otherwise fares come out as {s,e,d}.
+    const maybeJson = value as unknown as { toJSON?: () => unknown };
+    if (typeof maybeJson.toJSON === 'function') {
+      return maybeJson.toJSON() as T;
+    }
     const result: Record<string, unknown> = {};
     for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
       if (SENSITIVE_KEYS.has(key)) continue;

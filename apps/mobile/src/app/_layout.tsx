@@ -13,6 +13,8 @@ export default function RootLayout() {
           <Stack.Screen name="login" options={{ title: "Đăng nhập" }} />
           <Stack.Screen name="home" options={{ title: "GhepGo Tài xế" }} />
           <Stack.Screen name="trip/[id]" options={{ title: "Chi tiết chuyến" }} />
+          <Stack.Screen name="group/[id]" options={{ title: "Chuyến ghép" }} />
+          <Stack.Screen name="earnings" options={{ title: "Thu nhập" }} />
         </Stack>
       </AuthProvider>
     </SafeAreaProvider>

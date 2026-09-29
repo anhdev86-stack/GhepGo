@@ -2,8 +2,11 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateTripDto } from './dto/create-trip.dto.js';
 import { UpdateTripStatusDto } from './dto/update-trip-status.dto.js';
-import { estimateDurationSecs, estimateFare, haversineDistanceMeters } from '../common/geo.util.js';
+import { estimateFare } from '../common/geo.util.js';
 import { MatchingService } from '../matching/matching.service.js';
+import { RealtimePublisher } from '../realtime/realtime.publisher.js';
+import { GeoService } from '../geo/geo.service.js';
+import { WalletService } from '../wallet/wallet.service.js';
 
 const NEXT_STATUS: Record<string, string[]> = {
   ACCEPTED: ['EN_ROUTE_TO_PICKUP', 'CANCELLED'],
@@ -18,6 +21,9 @@ export class TripsService {
   constructor(
     private prisma: PrismaService,
     private matchingService: MatchingService,
+    private publisher: RealtimePublisher,
+    private geo: GeoService,
+    private wallet: WalletService,
   ) {}
 
   async create(customerId: string, dto: CreateTripDto) {
@@ -25,16 +31,20 @@ export class TripsService {
       return this.matchingService.matchOrCreateGroup(customerId, dto);
     }
 
-    const distanceMeters = Math.round(
-      haversineDistanceMeters(dto.pickupLat, dto.pickupLng, dto.dropoffLat, dto.dropoffLng),
-    );
+    // Road distance from the map provider; Haversine-based fallback inside GeoService.
+    const route = await this.geo.route([
+      { lat: dto.pickupLat, lng: dto.pickupLng },
+      { lat: dto.dropoffLat, lng: dto.dropoffLng },
+    ]);
+    const distanceMeters = route.distanceMeters;
+    const durationSecs = route.durationSecs;
     const fare = estimateFare(distanceMeters);
-    const durationSecs = estimateDurationSecs(distanceMeters);
 
-    return this.prisma.trip.create({
+    const trip = await this.prisma.trip.create({
       data: {
         customerId,
         tripType: dto.tripType,
+        paymentMethod: dto.paymentMethod ?? 'CASH',
         pickupAddress: dto.pickupAddress,
         pickupLat: dto.pickupLat,
         pickupLng: dto.pickupLng,
@@ -46,6 +56,21 @@ export class TripsService {
         fare,
       },
     });
+
+    this.publisher.publish({
+      type: 'trip.created',
+      trip: {
+        id: trip.id,
+        tripType: trip.tripType,
+        pickupAddress: trip.pickupAddress,
+        dropoffAddress: trip.dropoffAddress,
+        pickupLat: trip.pickupLat,
+        pickupLng: trip.pickupLng,
+        fare: trip.fare.toString(),
+        distanceMeters: trip.distanceMeters,
+      },
+    });
+    return trip;
   }
 
   async findMine(customerId: string) {
@@ -56,6 +81,7 @@ export class TripsService {
         driver: { include: { user: true } },
         vehicle: true,
         payment: true,
+        rating: true,
         ...groupInclude,
       },
     });
@@ -94,8 +120,9 @@ export class TripsService {
       throw new BadRequestException('Chuyến đi này đã được nhận hoặc không còn khả dụng');
     }
 
-    return this.prisma.trip.update({
-      where: { id: tripId },
+    // Atomic claim: only one driver can win a REQUESTED trip.
+    const claimed = await this.prisma.trip.updateMany({
+      where: { id: tripId, status: 'REQUESTED', driverId: null },
       data: {
         driverId: driver.id,
         vehicleId: driver.vehicles[0].id,
@@ -103,6 +130,20 @@ export class TripsService {
         acceptedAt: new Date(),
       },
     });
+    if (claimed.count !== 1) {
+      throw new BadRequestException('Chuyến đi này vừa được tài xế khác nhận');
+    }
+    await this.prisma.driver.update({ where: { id: driver.id }, data: { status: 'ON_TRIP' } });
+
+    const updated = await this.prisma.trip.findUniqueOrThrow({ where: { id: tripId } });
+    this.publisher.publish({
+      type: 'trip.updated',
+      tripId,
+      customerId: updated.customerId,
+      driverUserId: userId,
+      status: updated.status,
+    });
+    return updated;
   }
 
   async updateStatus(userId: string, tripId: string, dto: UpdateTripStatusDto) {
@@ -138,14 +179,59 @@ export class TripsService {
     });
 
     if (dto.status === 'COMPLETED') {
-      await this.prisma.payment.upsert({
-        where: { tripId },
-        create: { tripId, amount: trip.fare, method: 'CASH', status: 'PENDING' },
-        update: {},
-      });
+      await this.wallet.settleTrip(tripId);
+      await this.prisma.driver.update({ where: { id: driver.id }, data: { status: 'AVAILABLE' } });
+    }
+    if (dto.status === 'CANCELLED') {
       await this.prisma.driver.update({ where: { id: driver.id }, data: { status: 'AVAILABLE' } });
     }
 
+    this.publisher.publish({
+      type: 'trip.updated',
+      tripId,
+      customerId: updated.customerId,
+      driverUserId: userId,
+      status: updated.status,
+      groupId: updated.groupId,
+    });
+    return updated;
+  }
+
+  /**
+   * Customer cancels their own trip. Allowed until the driver has actually
+   * picked them up (IN_PROGRESS). Shared trips are removed from their group
+   * and the remaining route is re-optimised.
+   */
+  async cancelByCustomer(customerId: string, tripId: string) {
+    const trip = await this.prisma.trip.findUnique({
+      where: { id: tripId },
+      include: { driver: { select: { userId: true, id: true } } },
+    });
+    if (!trip) throw new NotFoundException('Không tìm thấy chuyến đi');
+    if (trip.customerId !== customerId) throw new ForbiddenException('Không có quyền huỷ chuyến đi này');
+    if (!['REQUESTED', 'ASSIGNED', 'ACCEPTED', 'EN_ROUTE_TO_PICKUP'].includes(trip.status)) {
+      throw new BadRequestException('Chuyến đi đã bắt đầu, không thể huỷ');
+    }
+
+    const updated = await this.prisma.trip.update({
+      where: { id: tripId },
+      data: { status: 'CANCELLED', cancelledAt: new Date() },
+    });
+
+    if (trip.tripType === 'SHARED' && trip.groupId) {
+      await this.matchingService.removeTripFromGroup(tripId);
+    } else if (trip.driver) {
+      await this.prisma.driver.update({ where: { id: trip.driver.id }, data: { status: 'AVAILABLE' } });
+    }
+
+    this.publisher.publish({
+      type: 'trip.updated',
+      tripId,
+      customerId,
+      driverUserId: trip.driver?.userId ?? null,
+      status: 'CANCELLED',
+      groupId: trip.groupId,
+    });
     return updated;
   }
 

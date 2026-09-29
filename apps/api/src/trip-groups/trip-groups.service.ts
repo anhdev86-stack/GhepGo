@@ -1,6 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '../../generated/prisma/index.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { RealtimePublisher } from '../realtime/realtime.publisher.js';
+import { WalletService } from '../wallet/wallet.service.js';
 
 const stopsInclude = { stops: { orderBy: { sequence: 'asc' as const } } };
 const fullInclude = {
@@ -10,7 +12,11 @@ const fullInclude = {
 
 @Injectable()
 export class TripGroupsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private publisher: RealtimePublisher,
+    private wallet: WalletService,
+  ) {}
 
   async findAvailable() {
     return this.prisma.tripGroup.findMany({
@@ -52,18 +58,48 @@ export class TripGroupsService {
     }
 
     const now = new Date();
-    await this.prisma.$transaction([
-      this.prisma.tripGroup.update({
-        where: { id: groupId },
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.tripGroup.updateMany({
+        where: { id: groupId, status: 'MATCHING', driverId: null },
         data: { driverId: driver.id, vehicleId: vehicle.id, status: 'ASSIGNED' },
-      }),
-      this.prisma.trip.updateMany({
-        where: { groupId },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Nhóm chuyến này vừa được tài xế khác nhận');
+      }
+      await tx.trip.updateMany({
+        where: { groupId, status: 'ASSIGNED' },
         data: { driverId: driver.id, vehicleId: vehicle.id, status: 'ACCEPTED', acceptedAt: now },
-      }),
-    ]);
+      });
+      await tx.driver.update({ where: { id: driver.id }, data: { status: 'ON_TRIP' } });
+    });
 
-    return this.prisma.tripGroup.findUnique({ where: { id: groupId }, include: fullInclude });
+    const result = await this.prisma.tripGroup.findUnique({ where: { id: groupId }, include: fullInclude });
+    this.publishGroup(result!, userId);
+    for (const t of result!.trips) {
+      this.publisher.publish({
+        type: 'trip.updated',
+        tripId: t.id,
+        customerId: t.customerId,
+        driverUserId: userId,
+        status: t.status,
+        groupId,
+      });
+    }
+    return result;
+  }
+
+  private publishGroup(
+    group: { id: string; status: string; currentStopIndex: number; trips: { customerId: string }[] },
+    driverUserId: string | null,
+  ) {
+    this.publisher.publish({
+      type: 'group.updated',
+      groupId: group.id,
+      status: group.status,
+      currentStopIndex: group.currentStopIndex,
+      customerIds: [...new Set(group.trips.map((t) => t.customerId))],
+      driverUserId,
+    });
   }
 
   async advanceStop(userId: string, groupId: string) {
@@ -109,18 +145,10 @@ export class TripGroupsService {
         }),
       );
     } else {
-      const trip = await this.prisma.trip.findUniqueOrThrow({ where: { id: stop.tripId } });
       ops.push(
         this.prisma.trip.update({
           where: { id: stop.tripId },
           data: { status: 'COMPLETED', completedAt: now },
-        }),
-      );
-      ops.push(
-        this.prisma.payment.upsert({
-          where: { tripId: stop.tripId },
-          create: { tripId: stop.tripId, amount: trip.fare, method: 'CASH', status: 'PENDING' },
-          update: {},
         }),
       );
     }
@@ -130,7 +158,21 @@ export class TripGroupsService {
     }
 
     await this.prisma.$transaction(ops);
+    if (stop.kind === 'DROPOFF') await this.wallet.settleTrip(stop.tripId);
 
-    return this.prisma.tripGroup.findUnique({ where: { id: groupId }, include: fullInclude });
+    const result = await this.prisma.tripGroup.findUnique({ where: { id: groupId }, include: fullInclude });
+    this.publishGroup(result!, userId);
+    const affected = result!.trips.find((t) => t.id === stop.tripId);
+    if (affected) {
+      this.publisher.publish({
+        type: 'trip.updated',
+        tripId: affected.id,
+        customerId: affected.customerId,
+        driverUserId: userId,
+        status: affected.status,
+        groupId,
+      });
+    }
+    return result;
   }
 }

@@ -66,7 +66,7 @@ export default function TripDetailScreen() {
       const updated = await api.updateTripStatus(token, id, action.next);
       setTrip(updated);
       if (updated.status === "COMPLETED") {
-        router.replace("/home");
+        await load();
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Có lỗi xảy ra");
@@ -97,6 +97,32 @@ export default function TripDetailScreen() {
       {action && (
         <Pressable style={styles.button} onPress={advance} disabled={busy}>
           <Text style={styles.buttonText}>{busy ? "Đang xử lý..." : action.label}</Text>
+        </Pressable>
+      )}
+
+      {trip.status === "COMPLETED" && trip.payment?.method === "CASH" && trip.payment?.status === "PENDING" && (
+        <Pressable
+          style={[styles.button, { backgroundColor: "#f97316" }]}
+          disabled={busy}
+          onPress={async () => {
+            if (!token) return;
+            setBusy(true);
+            try {
+              await api.confirmCash(token, trip.id);
+              router.replace("/home");
+            } catch (err) {
+              setError(err instanceof ApiError ? err.message : "Có lỗi xảy ra");
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <Text style={styles.buttonText}>Đã thu tiền mặt {Number(trip.fare).toLocaleString("vi-VN")} đ</Text>
+        </Pressable>
+      )}
+      {trip.status === "COMPLETED" && trip.payment?.status === "PAID" && (
+        <Pressable style={[styles.button, { backgroundColor: "#64748b" }]} onPress={() => router.replace("/home")}>
+          <Text style={styles.buttonText}>Về trang chính</Text>
         </Pressable>
       )}
     </View>
