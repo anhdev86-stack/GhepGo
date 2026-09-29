@@ -14,6 +14,7 @@ import { GeoModule } from './geo/geo.module.js';
 import { WalletModule } from './wallet/wallet.module.js';
 import { FleetModule } from './fleet/fleet.module.js';
 import { SmsModule } from './sms/sms.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { SmsModule } from './sms/sms.module.js';
     PrismaModule,
     RedisModule,
     SmsModule,
+    NotificationsModule,
     RealtimeModule,
     GeoModule,
     WalletModule,

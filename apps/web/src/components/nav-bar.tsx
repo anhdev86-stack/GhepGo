@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
+import { NotificationBell } from "@/components/notification-bell";
 
 export function NavBar() {
   const { user, logout } = useAuth();
@@ -41,6 +42,7 @@ export function NavBar() {
           )}
           {user && (
             <>
+              <NotificationBell />
               <span className="text-slate-500">{user.fullName}</span>
               <button
                 onClick={() => {

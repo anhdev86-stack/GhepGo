@@ -11,6 +11,7 @@ export const WS = {
   TRIP_UPDATED: "trip:updated",
   GROUP_NEW: "group:new",
   GROUP_UPDATED: "group:updated",
+  NOTIFICATION: "notification",
   LOCATION_UPDATE: "location:update",
   SUBSCRIBE_TRIP: "subscribe:trip",
   SUBSCRIBE_GROUP: "subscribe:group",

@@ -103,6 +103,21 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 - Provider SMS cắm được qua `SMS_PROVIDER`: `console` (dev: in ra log và trả `devCode` trong response khi không phải
   production), `esms` (eSMS.vn brandname, `ESMS_*`), `twilio` (`TWILIO_*`). `OTP_REQUIRED=false` để tắt khi dev.
 
+### Push notification (`src/notifications`)
+
+- Thiết bị đăng ký qua `POST /notifications/devices {kind: EXPO|WEBPUSH, token, subscription?}`; hộp thư trong app:
+  `GET /notifications[?unread=1]`, `GET /notifications/unread-count`, `PATCH /notifications/:id/read`, `PATCH /notifications/read-all`,
+  `POST /notifications/test` (gửi thử cho chính mình), `GET /notifications/vapid-public-key`.
+- **Mobile**: Expo Push qua `expo-server-sdk` (token `DeviceNotRegistered` tự xoá). App tài xế đăng ký token sau khi đăng nhập,
+  bấm vào thông báo mở đúng màn hình. Lưu ý: Expo Go trên Android không nhận remote push từ SDK 53, cần development build
+  (`npx expo run:android` hoặc EAS); iOS cần thiết bị thật.
+- **Web**: Web Push VAPID (`web-push`) + service worker `apps/web/public/sw.js`; chuông thông báo trên thanh điều hướng
+  hiển thị hộp thư realtime và nút "Bật thông báo đẩy". Tạo khoá một lần: `npx web-push generate-vapid-keys` → `VAPID_*` trong `.env`.
+- **Nguồn sự kiện**: listener nghe kênh Redis `ghepgo:events` (dedupe bằng SETNX 30 giây nên nhiều instance API không gửi trùng):
+  tài xế nhận / đang tới / bắt đầu / hoàn thành / huỷ chuyến → khách; khách huỷ, khách mới ghép vào xe → tài xế;
+  chuyến mới trong 5 km → tài xế đang trực (không lưu hộp thư); nạp ví thành công, kết quả rút tiền → ví.
+- Mọi thông báo lưu bảng `notifications` và phát sự kiện socket `notification` để client đang mở cập nhật ngay.
+
 ### Ghép khách & tối ưu tuyến (`src/matching`, `src/common/route.util.ts`)
 
 - **Bucketing rule-based**: điểm đón/trả của khách mới phải cách một điểm dừng *chưa đi qua* của
@@ -229,6 +244,6 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
-- Khiếu nại, push notification, GPS background trên mobile, ràng buộc khu vực khi ghép chuyến.
+- Khiếu nại, GPS background trên mobile, ràng buộc khu vực khi ghép chuyến.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

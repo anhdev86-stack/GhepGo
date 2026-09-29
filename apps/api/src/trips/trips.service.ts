@@ -193,6 +193,7 @@ export class TripsService {
       driverUserId: userId,
       status: updated.status,
       groupId: updated.groupId,
+      ...(dto.status === 'CANCELLED' ? { reason: 'driver_cancelled' as const } : {}),
     });
     return updated;
   }
@@ -231,6 +232,7 @@ export class TripsService {
       driverUserId: trip.driver?.userId ?? null,
       status: 'CANCELLED',
       groupId: trip.groupId,
+      reason: 'customer_cancelled',
     });
     return updated;
   }

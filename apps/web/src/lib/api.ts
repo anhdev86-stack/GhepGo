@@ -147,6 +147,21 @@ export const api = {
   resolveWithdrawal: (token: string, id: string, body: { status: "APPROVED" | "REJECTED" | "PAID"; note?: string }) =>
     request(`/wallet/withdrawals/${id}`, { method: "PATCH", token, body }),
 
+  // ---- notifications ----
+  vapidPublicKey: (token: string) => request<{ publicKey: string | null }>("/notifications/vapid-public-key", { token }),
+  registerDevice: (
+    token: string,
+    body: { kind: "EXPO" | "WEBPUSH"; token: string; subscription?: Record<string, unknown>; platform?: string },
+  ) => request("/notifications/devices", { method: "POST", token, body }),
+  removeDevice: (token: string, deviceToken: string) =>
+    request(`/notifications/devices/${encodeURIComponent(deviceToken)}`, { method: "DELETE", token }),
+  notifications: (token: string, unreadOnly = false) =>
+    request<any[]>(`/notifications${unreadOnly ? "?unread=1" : ""}`, { token }),
+  markNotificationRead: (token: string, id: string) =>
+    request(`/notifications/${id}/read`, { method: "PATCH", token }),
+  markAllNotificationsRead: (token: string) => request("/notifications/read-all", { method: "PATCH", token }),
+  sendTestNotification: (token: string) => request("/notifications/test", { method: "POST", token }),
+
   // ---- fleet / reports ----
   rateTrip: (token: string, tripId: string, body: { score: number; comment?: string }) =>
     request(`/trips/${tripId}/rating`, { method: "POST", token, body }),

@@ -7,6 +7,7 @@ import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import type { TopupCallbackDto, TopupDto, WithdrawDto, ResolveWithdrawalDto } from './wallet.dto.js';
 import { VnpayService, VNPAY_RSP, type VnpayCallbackParams } from './vnpay.service.js';
 import { MomoService, type MomoCallbackParams } from './momo.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 type Tx = Prisma.TransactionClient;
 export type Gateway = 'vnpay' | 'momo' | 'mock';
@@ -40,6 +41,7 @@ export class WalletService {
     private publisher: RealtimePublisher,
     private vnpay: VnpayService,
     private momo: MomoService,
+    private notifications: NotificationsService,
     config: ConfigService,
   ) {
     this.commissionRate = Number(config.get('COMMISSION_RATE') ?? 0.2);
@@ -118,6 +120,14 @@ export class WalletService {
       where: { walletId: wallet.id },
       orderBy: { createdAt: 'desc' },
       take: limit,
+    });
+  }
+
+  private notifyTopup(userId: string, amount: unknown, balance: unknown) {
+    void this.notifications.sendToUser(userId, {
+      title: 'Nạp ví thành công',
+      body: `+${Number(amount).toLocaleString('vi-VN')} đ · số dư ${Number(balance).toLocaleString('vi-VN')} đ`,
+      data: { screen: 'wallet' },
     });
   }
 
@@ -214,6 +224,7 @@ export class WalletService {
           where: { id: pending.id },
           data: { status: 'COMPLETED', balanceAfter: after, reference: ref },
         });
+        this.notifyTopup(pending.wallet.userId, pending.amount, after);
         return VNPAY_RSP.OK;
       });
     } catch (err) {
@@ -248,6 +259,7 @@ export class WalletService {
         const after = wallet.balance.plus(pending.amount);
         await tx.wallet.update({ where: { id: wallet.id }, data: { balance: after } });
         await tx.walletTransaction.update({ where: { id: pending.id }, data: { status: 'COMPLETED', balanceAfter: after, reference: ref } });
+        this.notifyTopup(pending.wallet.userId, pending.amount, after);
         return { accepted: true, reason: 'credited' };
       });
     } catch (err) {
@@ -320,10 +332,12 @@ export class WalletService {
       const wallet = await this.lockWallet(tx, pending.wallet.userId);
       const after = wallet.balance.plus(pending.amount);
       await tx.wallet.update({ where: { id: wallet.id }, data: { balance: after } });
-      return tx.walletTransaction.update({
+      const done = await tx.walletTransaction.update({
         where: { id: pending.id },
         data: { status: 'COMPLETED', balanceAfter: after, reference: dto.gatewayRef },
       });
+      this.notifyTopup(pending.wallet.userId, pending.amount, after);
+      return done;
     });
   }
 
@@ -479,10 +493,17 @@ export class WalletService {
           allowNegative: true,
         });
       }
-      return tx.withdrawal.update({
+      const updated = await tx.withdrawal.update({
         where: { id },
         data: { status: dto.status, note: dto.note, resolvedAt: dto.status === 'APPROVED' ? undefined : new Date() },
       });
+      const label = { APPROVED: 'đã được duyệt', PAID: 'đã được chuyển khoản', REJECTED: 'bị từ chối' }[dto.status];
+      void this.notifications.sendToUser(w.driver.userId, {
+        title: `Yêu cầu rút tiền ${label}`,
+        body: `${Number(w.amount).toLocaleString('vi-VN')} đ · ${w.bankName} ${w.bankAccount}${dto.note ? ` · ${dto.note}` : ''}`,
+        data: { screen: 'wallet' },
+      });
+      return updated;
     });
   }
 }

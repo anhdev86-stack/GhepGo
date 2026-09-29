@@ -95,6 +95,11 @@ enum ShiftStatus {
   ENDED
 }
 
+enum PushKind {
+  EXPO
+  WEBPUSH
+}
+
 // -------------------- Core models --------------------
 
 model User {
@@ -110,6 +115,8 @@ model User {
   tripsAsRider  Trip[]  @relation("CustomerTrips")
   wallet        Wallet?
   ratingsGiven  Rating[]
+  pushDevices   PushDevice[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -344,4 +351,35 @@ model Rating {
 
   @@index([driverId])
   @@map("ratings")
+}
+
+model PushDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind       PushKind
+  /// Expo push token, or the Web Push subscription endpoint.
+  token      String   @unique
+  /// Web Push only: full PushSubscription JSON (endpoint + keys).
+  subscription Json?
+  platform   String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("push_devices")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String
+  data      Json?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@map("notifications")
 }

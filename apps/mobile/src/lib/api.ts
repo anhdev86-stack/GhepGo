@@ -99,4 +99,12 @@ export const api = {
     request<any>("/wallet/withdrawals", { method: "POST", body: JSON.stringify(data), token }),
   confirmCash: (token: string, tripId: string) =>
     request<any>(`/wallet/trips/${tripId}/confirm-cash`, { method: "POST", token }),
+
+  registerDevice: (token: string, data: { kind: "EXPO" | "WEBPUSH"; token: string; platform?: string }) =>
+    request<any>("/notifications/devices", { method: "POST", body: JSON.stringify(data), token }),
+  notifications: (token: string) => request<any[]>("/notifications", { token }),
+  unreadCount: (token: string) => request<{ count: number }>("/notifications/unread-count", { token }),
+  markNotificationRead: (token: string, id: string) =>
+    request<any>(`/notifications/${id}/read`, { method: "PATCH", token }),
+  markAllNotificationsRead: (token: string) => request<any>("/notifications/read-all", { method: "PATCH", token }),
 };

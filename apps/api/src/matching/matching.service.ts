@@ -273,6 +273,18 @@ export class MatchingService {
     });
 
     await this.notifyGroupChanged(best.groupId);
+    if (hasDriver) {
+      const driver = await this.prisma.driver.findUnique({ where: { id: best.driverId! }, select: { userId: true } });
+      this.publisher.publish({
+        type: 'trip.updated',
+        tripId: trip.id,
+        customerId,
+        driverUserId: driver?.userId ?? null,
+        status: 'ACCEPTED',
+        groupId: best.groupId,
+        reason: 'rider_joined',
+      });
+    }
     return trip;
   }
 

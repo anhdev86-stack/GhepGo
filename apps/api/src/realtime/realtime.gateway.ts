@@ -160,6 +160,9 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       case 'group.created':
         this.server.to([rooms.driversAvailable, rooms.admins]).emit(WS.GROUP_NEW, { groupId: event.groupId });
         break;
+      case 'notification':
+        this.server.to(rooms.user(event.userId)).emit(WS.NOTIFICATION, event.notification);
+        break;
       case 'group.updated': {
         const targets = [rooms.group(event.groupId), rooms.admins, ...event.customerIds.map(rooms.user)];
         if (event.driverUserId) targets.push(rooms.user(event.driverUserId));

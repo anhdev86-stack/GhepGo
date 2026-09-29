@@ -16,6 +16,7 @@ import { useDriverLocationStream, useRealtime, useSocketEvent, WS } from "../lib
 export default function HomeScreen() {
   const { token, user, isLoading, logout } = useAuth();
   const { socket, connected } = useRealtime(token);
+  const [unread, setUnread] = useState(0);
 
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [available, setAvailable] = useState<any[]>([]);
@@ -58,6 +59,11 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  useEffect(() => {
+    if (!token) return;
+    api.unreadCount(token).then((r) => setUnread(r.count)).catch(() => {});
+  }, [token]);
+  useSocketEvent(socket, WS.NOTIFICATION, () => setUnread((n) => n + 1));
   useSocketEvent(socket, WS.TRIP_NEW, refresh);
   useSocketEvent(socket, WS.TRIP_UPDATED, refresh);
   useSocketEvent(socket, WS.GROUP_NEW, refresh);
@@ -258,6 +264,15 @@ export default function HomeScreen() {
         <View>
           <Pressable style={[styles.button, { marginTop: 8, backgroundColor: "#0f766e" }]} onPress={() => router.push("/earnings")}>
             <Text style={styles.buttonText}>Thu nhập & rút tiền</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.button, { marginTop: 8, backgroundColor: "#475569" }]}
+            onPress={() => {
+              setUnread(0);
+              router.push("/notifications");
+            }}
+          >
+            <Text style={styles.buttonText}>Thông báo{unread > 0 ? ` (${unread} mới)` : ""}</Text>
           </Pressable>
           <Pressable onPress={logout} style={{ marginTop: 16 }}>
           <Text style={{ color: "#dc2626", textAlign: "center" }}>Đăng xuất</Text>
