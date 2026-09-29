@@ -132,7 +132,7 @@ export class MomoService {
   }
 
   verify(p: MomoCallbackParams): boolean {
-    const received = String(p.signature ?? '');
+    const received = typeof p.signature === 'string' ? p.signature : '';
     if (!received) return false;
     if (p.partnerCode !== this.partnerCode) return false;
     const expected = this.sign(this.callbackRawSignature(p));

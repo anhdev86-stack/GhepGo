@@ -7,7 +7,7 @@ export const REDIS_CHANNEL = 'ghepgo:events';
 export type RealtimeEvent =
   | { type: 'driver.location'; driverId: string; lat: number; lng: number; heading?: number; speed?: number; updatedAt: number; tripIds: string[]; groupIds: string[] }
   | { type: 'trip.created'; trip: { id: string; tripType: string; pickupAddress: string; dropoffAddress: string; pickupLat: number; pickupLng: number; fare: string | number; distanceMeters: number | null } }
-  | { type: 'trip.updated'; tripId: string; customerId: string; driverUserId?: string | null; status: string; groupId?: string | null; reason?: 'rider_joined' | 'customer_cancelled' | 'driver_cancelled' }
+  | { type: 'trip.updated'; tripId: string; customerId: string; driverUserId?: string | null; status: string; groupId?: string | null; reason?: 'rider_joined' | 'customer_cancelled' | 'driver_cancelled' | 'expired' }
   | { type: 'group.created'; groupId: string }
   | { type: 'group.updated'; groupId: string; status: string; currentStopIndex: number; customerIds: string[]; driverUserId?: string | null }
   | { type: 'notification'; userId: string; notification: { id: string; title: string; body: string; data: Record<string, unknown>; createdAt: string } };

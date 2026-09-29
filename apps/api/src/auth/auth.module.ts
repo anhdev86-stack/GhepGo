@@ -6,6 +6,7 @@ import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { JwtStrategy } from './strategies/jwt.strategy.js';
 import { OtpService } from './otp/otp.service.js';
+import { TokenService } from './token.service.js';
 
 @Module({
   imports: [
@@ -16,13 +17,13 @@ import { OtpService } from './otp/otp.service.js';
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('JWT_SECRET') ?? 'change-me-in-production',
         signOptions: {
-          expiresIn: (config.get<string>('JWT_EXPIRES_IN') ?? '7d') as unknown as number,
+          expiresIn: (config.get<string>('JWT_EXPIRES_IN') ?? '1h') as unknown as number,
         },
       }),
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, OtpService],
-  exports: [AuthService, OtpService],
+  providers: [AuthService, JwtStrategy, OtpService, TokenService],
+  exports: [AuthService, OtpService, TokenService],
 })
 export class AuthModule {}

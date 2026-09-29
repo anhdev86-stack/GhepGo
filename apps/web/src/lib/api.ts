@@ -9,9 +9,19 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Session refresh hook: the auth context registers a function that swaps an
+ * expired access token for a new one. `request` calls it once on 401 and
+ * retries, so pages never have to care about token lifetime.
+ */
+let refreshSession: (() => Promise<string | null>) | null = null;
+export function setSessionRefresher(fn: (() => Promise<string | null>) | null) {
+  refreshSession = fn;
+}
+
 async function request<T>(
   path: string,
-  options: { method?: string; body?: unknown; token?: string | null } = {},
+  options: { method?: string; body?: unknown; token?: string | null; _retried?: boolean } = {},
 ): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method: options.method ?? "GET",
@@ -21,6 +31,11 @@ async function request<T>(
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
   });
+
+  if (res.status === 401 && options.token && !options._retried && refreshSession && !path.startsWith("/auth/")) {
+    const fresh = await refreshSession();
+    if (fresh) return request<T>(path, { ...options, token: fresh, _retried: true });
+  }
 
   const isJson = res.headers.get("content-type")?.includes("application/json");
   const data = isJson ? await res.json() : null;
@@ -38,6 +53,8 @@ export type OtpPurpose = "REGISTER" | "RESET_PASSWORD";
 
 export interface AuthResponse {
   accessToken: string;
+  refreshToken: string;
+  expiresIn?: string;
   user: { id: string; phone: string; role: "CUSTOMER" | "DRIVER" | "ADMIN"; fullName: string };
 }
 
@@ -51,6 +68,11 @@ export const api = {
   }) => request<AuthResponse>("/auth/register", { method: "POST", body }),
 
   authConfig: () => request<{ otpRequired: boolean }>("/auth/config"),
+
+  refresh: (refreshToken: string) => request<AuthResponse>("/auth/refresh", { method: "POST", body: { refreshToken } }),
+
+  logout: (token: string, refreshToken?: string, everywhere = false) =>
+    request("/auth/logout", { method: "POST", token, body: { refreshToken, everywhere } }),
 
   sendOtp: (phone: string, purpose: OtpPurpose) =>
     request<{ phone: string; expiresInSecs: number; resendAfterSecs: number; devCode?: string }>("/auth/otp/send", {

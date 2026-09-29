@@ -6,11 +6,16 @@ export class ApiError extends Error {
   }
 }
 
+let refreshSession: (() => Promise<string | null>) | null = null;
+export function setSessionRefresher(fn: (() => Promise<string | null>) | null) {
+  refreshSession = fn;
+}
+
 async function request<T>(
   path: string,
-  options: RequestInit & { token?: string } = {},
+  options: RequestInit & { token?: string; _retried?: boolean } = {},
 ): Promise<T> {
-  const { token, headers, ...rest } = options;
+  const { token, headers, _retried, ...rest } = options;
   const res = await fetch(`${BASE_URL}${path}`, {
     ...rest,
     headers: {
@@ -19,6 +24,11 @@ async function request<T>(
       ...headers,
     },
   });
+
+  if (res.status === 401 && token && !_retried && refreshSession && !path.startsWith("/auth/")) {
+    const fresh = await refreshSession();
+    if (fresh) return request<T>(path, { ...options, token: fresh, _retried: true });
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -37,6 +47,12 @@ export const api = {
     request<any>("/auth/register", { method: "POST", body: JSON.stringify(data) }),
 
   authConfig: () => request<{ otpRequired: boolean }>("/auth/config"),
+
+  refresh: (refreshToken: string) =>
+    request<any>("/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken }) }),
+
+  logout: (token: string, refreshToken?: string) =>
+    request<any>("/auth/logout", { method: "POST", body: JSON.stringify({ refreshToken }), token }),
 
   sendOtp: (phone: string, purpose: "REGISTER" | "RESET_PASSWORD") =>
     request<{ phone: string; resendAfterSecs: number; devCode?: string }>("/auth/otp/send", {

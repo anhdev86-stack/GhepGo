@@ -44,7 +44,7 @@ export default function LoginScreen() {
       setError("Tài khoản này không phải tài xế");
       return;
     }
-    login({ token: auth.accessToken, user: auth.user });
+    login({ token: auth.accessToken, refreshToken: auth.refreshToken, user: auth.user });
     router.replace("/home");
   };
 

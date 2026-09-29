@@ -9,5 +9,6 @@
     "dev:api": "pnpm --filter @ghepgo/api start:dev",
     "dev:web": "pnpm --filter @ghepgo/web dev",
     "build": "pnpm -r build"
-  }
+  },
+  "packageManager": "pnpm@11.25.0"
 }

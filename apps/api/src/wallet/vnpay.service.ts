@@ -117,7 +117,7 @@ export class VnpayService {
 
   /** Verify vnp_SecureHash on IPN / return-URL params. */
   verify(params: VnpayCallbackParams): boolean {
-    const received = params.vnp_SecureHash ?? '';
+    const received = typeof params.vnp_SecureHash === 'string' ? params.vnp_SecureHash : '';
     if (!received) return false;
     const expected = this.sign(this.signData(params));
     const a = Buffer.from(expected, 'utf8');

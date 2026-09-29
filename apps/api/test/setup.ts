@@ -1,0 +1,19 @@
+// Test-only configuration applied before the Nest app boots.
+process.env.NODE_ENV = process.env.NODE_ENV ?? 'test';
+process.env.JWT_SECRET = process.env.JWT_SECRET ?? 'e2e-secret';
+process.env.OTP_REQUIRED = 'true';
+process.env.SMS_PROVIDER = 'console';
+process.env.GEO_PROVIDER = 'osm';
+process.env.OSRM_URL = 'http://127.0.0.1:9'; // unreachable → Haversine fallback, no network in CI
+process.env.NOMINATIM_URL = 'http://127.0.0.1:9';
+process.env.PAYMENT_GATEWAY = 'vnpay';
+process.env.VNPAY_TMN_CODE = 'TESTCODE';
+process.env.VNPAY_HASH_SECRET = 'TESTSECRET0123456789';
+process.env.MOMO_PARTNER_CODE = 'MOMO';
+process.env.MOMO_ACCESS_KEY = 'F8BBA842ECF85';
+process.env.MOMO_SECRET_KEY = 'K951B6PE1waDMi640xX08PD3vg6EkVlz';
+process.env.MOMO_ENDPOINT = 'http://127.0.0.1:9'; // create call must not hit the network
+process.env.PAYMENT_WEBHOOK_SECRET = 'e2e-webhook';
+process.env.ZONE_ENFORCEMENT = 'pickup';
+process.env.RATE_LIMIT_PER_MINUTE = '10000';
+process.env.THROTTLE_DISABLED = 'true';

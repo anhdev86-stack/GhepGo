@@ -1,4 +1,8 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AppThrottlerGuard } from './common/app-throttler.guard.js';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -17,10 +21,14 @@ import { SmsModule } from './sms/sms.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { ComplaintsModule } from './complaints/complaints.module.js';
 import { ZonesModule } from './zones/zones.module.js';
+import { DispatchModule } from './dispatch/dispatch.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    // Global rate limit per IP; auth endpoints declare stricter limits.
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 300) }]),
+    ScheduleModule.forRoot(),
     PrismaModule,
     RedisModule,
     ZonesModule,
@@ -36,8 +44,9 @@ import { ZonesModule } from './zones/zones.module.js';
     TripsModule,
     TripGroupsModule,
     ComplaintsModule,
+    DispatchModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, { provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
 export class AppModule {}

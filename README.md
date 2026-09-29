@@ -253,9 +253,48 @@ khi app không ở foreground (mở app thì socket đảm nhiệm để tránh 
 
 ```bash
 cd apps/api
-pnpm test          # unit (vitest) — gồm test tối ưu tuyến route.util.spec.ts
+pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, health
+pnpm test:e2e      # e2e (vitest + supertest + socket.io-client) trên Postgres + Redis thật: 17 kịch bản
 pnpm build
 ```
+
+E2E (`apps/api/test/*.e2e-spec.ts`) khởi động toàn bộ AppModule trên cổng ngẫu nhiên và chạy các luồng thật:
+OTP/đăng ký/refresh/logout/khoá đăng nhập, ghép nhóm + ghép động + huỷ + race nhận chuyến + sự kiện socket,
+ví/hoa hồng/fallback tiền mặt/rút tiền/IPN VNPay và MoMo, khu vực (tròn + đa giác), khiếu nại + hoàn tiền,
+push device, đánh giá, KPI, hết hạn chuyến. Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
+không mạng). CI chạy cả unit lẫn e2e.
+
+## CI/CD và triển khai
+
+- **GitHub Actions** (`.github/workflows/ci.yml`): API lint + unit + build + e2e (service Postgres/PostGIS + Redis),
+  web lint + build, mobile typecheck, build 2 Docker image. Chạy trên mọi push/PR vào `master`.
+- **Docker**: `apps/api/Dockerfile` (multi-stage, chạy `prisma migrate deploy` trước khi start),
+  `apps/web/Dockerfile` (Next.js standalone). `docker-compose.prod.yml` gồm Postgres/PostGIS, Redis (AOF),
+  API, web, và job backup `pg_dump` hằng đêm giữ 14 ngày vào `./backups`:
+
+```bash
+cp apps/api/.env.example .env   # điền secret thật, POSTGRES_PASSWORD, CORS_ORIGINS, ADMIN_PHONE/ADMIN_PASSWORD...
+docker compose -f docker-compose.prod.yml up -d --build
+curl http://localhost:3001/api/health
+```
+
+## Bảo mật
+
+- `helmet`, CORS theo danh sách `CORS_ORIGINS` (production), `TRUST_PROXY` khi đứng sau nginx/LB.
+- Rate limit theo IP (`RATE_LIMIT_PER_MINUTE`, mặc định 300/phút) và chặt hơn cho đăng nhập (10/phút),
+  OTP (5/phút), đăng ký (5/phút). Khoá tài khoản 15 phút sau 5 lần sai mật khẩu.
+- Access token JWT ngắn hạn (`JWT_EXPIRES_IN`, mặc định 1 giờ, có `jti`) + refresh token 30 ngày lưu Redis,
+  xoay vòng mỗi lần dùng: `POST /auth/refresh`, `POST /auth/logout {refreshToken, everywhere}`. Đăng xuất
+  đưa access token vào blocklist tới khi hết hạn; đổi mật khẩu huỷ mọi phiên. Web và mobile tự refresh khi gặp 401.
+- Tài khoản admin đầu tiên tạo từ `ADMIN_PHONE`/`ADMIN_PASSWORD` khi khởi động (chỉ khi chưa có admin).
+- `GET /api/health` kiểm tra DB + Redis cho load balancer.
+
+## Điều phối (`src/dispatch`)
+
+- Cron mỗi phút (khoá Redis nên nhiều instance chỉ 1 chạy): chuyến bao xe không ai nhận sau `TRIP_REQUEST_TTL_MIN`
+  (10) và nhóm ghép chưa có tài xế sau `GROUP_MATCHING_TTL_MIN` (20) bị huỷ, khách được thông báo để đặt lại.
+- `GET /dispatch/suggest?lat&lng` xếp hạng tài xế đang trực gần điểm đón (khoảng cách, đánh giá, khu vực) kèm ETA;
+  admin `POST /admin/trips/:id/offer {driverId}` gửi đề nghị chuyến tới một tài xế; `POST /admin/dispatch/expire` chạy quét thủ công.
 
 Smoke test thủ công end-to-end (API + Redis + Socket.io) đã chạy: 2 khách ghép chung nhóm →
 tài xế nhận → đón khách 1 → khách 3 đặt giữa chừng được ghép vào xe đang chạy → khách 2 huỷ →
