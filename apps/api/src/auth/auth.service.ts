@@ -1,19 +1,33 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { RegisterDto } from './dto/register.dto.js';
 import { LoginDto } from './dto/login.dto.js';
+import { OtpService } from './otp/otp.service.js';
+import { normalizeVnPhone, toLocalVnPhone } from '../common/phone.util.js';
+import type { ResetPasswordDto } from './otp/otp.dto.js';
 
 @Injectable()
 export class AuthService {
   constructor(
     private prisma: PrismaService,
     private jwt: JwtService,
+    private otp: OtpService,
   ) {}
 
+  /** Phones are stored in local form (0xxxxxxxxx); accept any VN format on input. */
+  private canonicalPhone(raw: string) {
+    const e164 = normalizeVnPhone(raw);
+    if (!e164) throw new BadRequestException('Số điện thoại không hợp lệ');
+    return toLocalVnPhone(e164);
+  }
+
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    const phone = this.canonicalPhone(dto.phone);
+    if (this.otp.required) this.otp.assertVerified(dto.verificationToken, phone, 'REGISTER');
+
+    const existing = await this.prisma.user.findUnique({ where: { phone } });
     if (existing) {
       throw new ConflictException('Số điện thoại đã được đăng ký');
     }
@@ -22,7 +36,7 @@ export class AuthService {
 
     const user = await this.prisma.user.create({
       data: {
-        phone: dto.phone,
+        phone,
         passwordHash,
         fullName: dto.fullName,
         role: dto.role,
@@ -31,7 +45,7 @@ export class AuthService {
           ? {
               driver: {
                 create: {
-                  licenseNumber: `PENDING-${dto.phone}`,
+                  licenseNumber: `PENDING-${phone}`,
                 },
               },
             }
@@ -43,7 +57,8 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    const user = await this.prisma.user.findUnique({ where: { phone: dto.phone } });
+    const phone = normalizeVnPhone(dto.phone) ? this.canonicalPhone(dto.phone) : dto.phone;
+    const user = await this.prisma.user.findUnique({ where: { phone } });
     if (!user) {
       throw new UnauthorizedException('Sai số điện thoại hoặc mật khẩu');
     }
@@ -53,6 +68,17 @@ export class AuthService {
       throw new UnauthorizedException('Sai số điện thoại hoặc mật khẩu');
     }
 
+    return this.buildAuthResponse(user.id, user.phone, user.role, user.fullName);
+  }
+
+  /** Forgot password: requires an OTP verification token with purpose RESET_PASSWORD. */
+  async resetPassword(dto: ResetPasswordDto) {
+    const phone = this.canonicalPhone(dto.phone);
+    this.otp.assertVerified(dto.verificationToken, phone, 'RESET_PASSWORD');
+    const user = await this.prisma.user.findUnique({ where: { phone } });
+    if (!user) throw new NotFoundException('Số điện thoại chưa đăng ký');
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
     return this.buildAuthResponse(user.id, user.phone, user.role, user.fullName);
   }
 

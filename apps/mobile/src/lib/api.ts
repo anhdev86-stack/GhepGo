@@ -33,8 +33,25 @@ export const api = {
   login: (data: { phone: string; password: string }) =>
     request<any>("/auth/login", { method: "POST", body: JSON.stringify(data) }),
 
-  register: (data: { phone: string; password: string; fullName: string; role: string }) =>
+  register: (data: { phone: string; password: string; fullName: string; role: string; verificationToken?: string }) =>
     request<any>("/auth/register", { method: "POST", body: JSON.stringify(data) }),
+
+  authConfig: () => request<{ otpRequired: boolean }>("/auth/config"),
+
+  sendOtp: (phone: string, purpose: "REGISTER" | "RESET_PASSWORD") =>
+    request<{ phone: string; resendAfterSecs: number; devCode?: string }>("/auth/otp/send", {
+      method: "POST",
+      body: JSON.stringify({ phone, purpose }),
+    }),
+
+  verifyOtp: (phone: string, code: string, purpose: "REGISTER" | "RESET_PASSWORD") =>
+    request<{ phone: string; verificationToken: string }>("/auth/otp/verify", {
+      method: "POST",
+      body: JSON.stringify({ phone, code, purpose }),
+    }),
+
+  resetPassword: (data: { phone: string; verificationToken: string; newPassword: string }) =>
+    request<any>("/auth/password/reset", { method: "POST", body: JSON.stringify(data) }),
 
   myVehicles: (token: string) => request<any[]>("/vehicles/mine", { token }),
 

@@ -1,4 +1,4 @@
-import { IsEnum, IsNotEmpty, IsString, MinLength } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export enum RegisterRole {
   CUSTOMER = 'CUSTOMER',
@@ -20,4 +20,9 @@ export class RegisterDto {
 
   @IsEnum(RegisterRole)
   role: RegisterRole;
+
+  /** Token from POST /auth/otp/verify (purpose REGISTER). Required unless OTP_REQUIRED=false. */
+  @IsOptional()
+  @IsString()
+  verificationToken?: string;
 }

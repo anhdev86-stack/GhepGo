@@ -34,6 +34,7 @@ async function request<T>(
 }
 
 export type Gateway = "vnpay" | "momo" | "mock";
+export type OtpPurpose = "REGISTER" | "RESET_PASSWORD";
 
 export interface AuthResponse {
   accessToken: string;
@@ -41,8 +42,30 @@ export interface AuthResponse {
 }
 
 export const api = {
-  register: (body: { phone: string; password: string; fullName: string; role: "CUSTOMER" | "DRIVER" }) =>
-    request<AuthResponse>("/auth/register", { method: "POST", body }),
+  register: (body: {
+    phone: string;
+    password: string;
+    fullName: string;
+    role: "CUSTOMER" | "DRIVER";
+    verificationToken?: string;
+  }) => request<AuthResponse>("/auth/register", { method: "POST", body }),
+
+  authConfig: () => request<{ otpRequired: boolean }>("/auth/config"),
+
+  sendOtp: (phone: string, purpose: OtpPurpose) =>
+    request<{ phone: string; expiresInSecs: number; resendAfterSecs: number; devCode?: string }>("/auth/otp/send", {
+      method: "POST",
+      body: { phone, purpose },
+    }),
+
+  verifyOtp: (phone: string, code: string, purpose: OtpPurpose) =>
+    request<{ phone: string; verificationToken: string }>("/auth/otp/verify", {
+      method: "POST",
+      body: { phone, code, purpose },
+    }),
+
+  resetPassword: (body: { phone: string; verificationToken: string; newPassword: string }) =>
+    request<AuthResponse>("/auth/password/reset", { method: "POST", body }),
 
   login: (body: { phone: string; password: string }) =>
     request<AuthResponse>("/auth/login", { method: "POST", body }),

@@ -13,12 +13,14 @@ import { RealtimeModule } from './realtime/realtime.module.js';
 import { GeoModule } from './geo/geo.module.js';
 import { WalletModule } from './wallet/wallet.module.js';
 import { FleetModule } from './fleet/fleet.module.js';
+import { SmsModule } from './sms/sms.module.js';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     RedisModule,
+    SmsModule,
     RealtimeModule,
     GeoModule,
     WalletModule,

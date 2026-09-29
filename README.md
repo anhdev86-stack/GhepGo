@@ -68,7 +68,10 @@ API chạy tại `http://localhost:3001/api`.
 
 ### Các module chính
 
-- **Auth**: `POST /auth/register`, `POST /auth/login` — JWT, role `CUSTOMER` / `DRIVER` / `ADMIN`.
+- **Auth**: `POST /auth/otp/send {phone, purpose: REGISTER|RESET_PASSWORD}` → `POST /auth/otp/verify {phone, code, purpose}`
+  trả `verificationToken` (JWT 10 phút, gắn với số + mục đích) → `POST /auth/register {..., verificationToken}`,
+  `POST /auth/password/reset {phone, verificationToken, newPassword}`, `POST /auth/login`, `GET /auth/config`.
+  JWT, role `CUSTOMER` / `DRIVER` / `ADMIN`. Số điện thoại chấp nhận `09…`, `84…`, `+84 …`, lưu dạng `0xxxxxxxxx`.
 - **Vehicles**: `POST /vehicles`, `GET /vehicles/mine`, `GET /vehicles` (admin).
 - **Drivers**: `PATCH /drivers/me/status` (AVAILABLE/OFFLINE), `PATCH /drivers/me/location`
   (fallback HTTP cho GPS), `GET /drivers/nearby?lat&lng&radius` (tài xế đang trực quanh một điểm,
@@ -92,6 +95,13 @@ Trạng thái chuyến đi: `REQUESTED → ACCEPTED → EN_ROUTE_TO_PICKUP → I
 (hoặc `CANCELLED`), được validate ở server.
 
 Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSensitiveInterceptor`.
+
+### OTP / SMS (`src/auth/otp`, `src/sms`)
+
+- Mã 6 số ngẫu nhiên (`crypto.randomInt`), lưu Redis dạng hash SHA-256, TTL 5 phút, tối đa 5 lần nhập sai,
+  gửi lại sau 60 giây, tối đa 5 mã/giờ/số (trả 429). Mã dùng xong bị xoá; token xác thực chỉ dùng đúng số + mục đích.
+- Provider SMS cắm được qua `SMS_PROVIDER`: `console` (dev: in ra log và trả `devCode` trong response khi không phải
+  production), `esms` (eSMS.vn brandname, `ESMS_*`), `twilio` (`TWILIO_*`). `OTP_REQUIRED=false` để tắt khi dev.
 
 ### Ghép khách & tối ưu tuyến (`src/matching`, `src/common/route.util.ts`)
 
@@ -218,6 +228,7 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **Bản đồ**: lấy Goong API key (hoặc Mapbox) cho production; vẽ bản đồ/polyline trên web & mobile (hiện chỉ toạ độ + link).
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
-- OTP/SMS khi đăng ký, khiếu nại, push notification, GPS background trên mobile, ràng buộc khu vực khi ghép chuyến.
+- **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
+- Khiếu nại, push notification, GPS background trên mobile, ràng buộc khu vực khi ghép chuyến.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).
