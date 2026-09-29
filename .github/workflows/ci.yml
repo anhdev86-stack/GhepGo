@@ -66,7 +66,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter web exec eslint src --max-warnings=0 --rule '@typescript-eslint/no-explicit-any: off'
+      - name: Lint
+        run: |
+          pnpm --filter web exec eslint src --max-warnings=0 --rule "@typescript-eslint/no-explicit-any: off"
       - run: pnpm --filter web build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
