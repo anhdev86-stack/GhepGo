@@ -12,6 +12,7 @@ import {
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../contexts/auth-context";
 import { useDriverLocationStream, useRealtime, useSocketEvent, WS } from "../lib/realtime";
+import { isBackgroundTrackingActive, startBackgroundTracking, stopBackgroundTracking, type BackgroundPermission } from "../lib/background-location";
 
 export default function HomeScreen() {
   const { token, user, isLoading, logout } = useAuth();
@@ -30,6 +31,31 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const { lastFix, geoError } = useDriverLocationStream(socket, status !== "OFFLINE");
+  const [bgState, setBgState] = useState<BackgroundPermission | "off" | "error">("off");
+
+  // Keep OS-level background tracking in sync with the on-duty status,
+  // including when the status was changed from another device.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        if (status === "OFFLINE") {
+          await stopBackgroundTracking();
+          if (!cancelled) setBgState("off");
+        } else if (!(await isBackgroundTrackingActive())) {
+          const p = await startBackgroundTracking();
+          if (!cancelled) setBgState(p);
+        } else if (!cancelled) {
+          setBgState("granted");
+        }
+      } catch {
+        if (!cancelled) setBgState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
 
   const refresh = async () => {
     if (!token) return;
@@ -145,6 +171,19 @@ export default function HomeScreen() {
                       ? `GPS ${lastFix.lat.toFixed(4)}, ${lastFix.lng.toFixed(4)}`
                       : geoError ?? "Đang lấy GPS..."}
                 </Text>
+                {status !== "OFFLINE" && (
+                  <Text style={[styles.muted, bgState !== "granted" && { color: "#c2410c" }]}>
+                    {bgState === "granted"
+                      ? "GPS nền: đang chạy (vẫn gửi vị trí khi tắt màn hình)"
+                      : bgState === "foreground_only"
+                        ? 'GPS nền: chưa cấp quyền "Luôn cho phép" — chỉ gửi vị trí khi mở app'
+                        : bgState === "denied"
+                          ? "GPS nền: bị từ chối quyền vị trí"
+                          : bgState === "error"
+                            ? "GPS nền: không khả dụng (cần development build, không chạy trên Expo Go)"
+                            : "GPS nền: đang bật..."}
+                  </Text>
+                )}
               </View>
               <Pressable
                 onPress={toggleStatus}

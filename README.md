@@ -205,7 +205,12 @@ Màn hình: đăng nhập/đăng ký tài xế → dashboard (thêm xe, bật/t�
 qua `expo-location` + Socket.io, nhận bao xe hoặc nhóm ghép) → chi tiết chuyến bao xe
 (`trip/[id]`, có nút xác nhận thu tiền mặt) hoặc chuyến ghép (`group/[id]`: danh sách điểm dừng, nút "Đã đón/Đã trả"),
 màn `earnings` (số dư, KPI, rút tiền, lịch sử).
-Theo dõi GPS hiện chỉ chạy foreground; background tracking để giai đoạn sau.
+**GPS chạy nền** (`src/lib/background-location.ts`): khi bật trực, app khởi động `expo-location`
+`startLocationUpdatesAsync` với task `expo-task-manager` — Android chạy foreground service có thông báo
+"GhepGo đang trực", iOS dùng background mode `location`. Task gửi vị trí mới nhất qua `PATCH /drivers/me/location`
+khi app không ở foreground (mở app thì socket đảm nhiệm để tránh gửi trùng); tắt trực thì dừng. Cần quyền
+"Luôn cho phép"; app hiển thị trạng thái GPS nền và lý do nếu thiếu quyền. Yêu cầu **development build**
+(`npx expo run:android` / `run:ios` hoặc EAS) — Expo Go không hỗ trợ background location.
 
 ## Luồng demo end-to-end
 
@@ -244,6 +249,6 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
-- Khiếu nại, GPS background trên mobile, ràng buộc khu vực khi ghép chuyến.
+- Khiếu nại, ràng buộc khu vực khi ghép chuyến.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

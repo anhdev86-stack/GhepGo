@@ -3,6 +3,8 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "../contexts/auth-context";
 import { usePushRegistration } from "../lib/push";
+// Registers the background location task at app start (must run before any OS wake-up).
+import "../lib/background-location";
 
 function PushRegistrar() {
   const { token } = useAuth();

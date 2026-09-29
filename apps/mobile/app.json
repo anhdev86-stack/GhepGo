@@ -11,7 +11,14 @@
       "typedRoutes": true
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "GhepGo dùng vị trí để nhận chuyến gần bạn và chia sẻ vị trí với khách trong lúc trực.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "GhepGo cần vị trí cả khi chạy nền để khách theo dõi xe khi bạn tắt màn hình trong lúc trực.",
+        "UIBackgroundModes": [
+          "location"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,7 +28,14 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "useNextNotificationsApi": true
+      "useNextNotificationsApi": true,
+      "permissions": [
+        "ACCESS_BACKGROUND_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,7 +48,17 @@
         {
           "color": "#2563eb"
         }
-      ]
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "GhepGo cần vị trí cả khi chạy nền để khách theo dõi xe trong lúc bạn trực.",
+          "locationWhenInUsePermission": "GhepGo dùng vị trí để nhận chuyến gần bạn.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      "expo-task-manager"
     ]
   }
 }
