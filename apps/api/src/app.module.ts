@@ -15,6 +15,7 @@ import { WalletModule } from './wallet/wallet.module.js';
 import { FleetModule } from './fleet/fleet.module.js';
 import { SmsModule } from './sms/sms.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { ComplaintsModule } from './complaints/complaints.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
     VehiclesModule,
     TripsModule,
     TripGroupsModule,
+    ComplaintsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

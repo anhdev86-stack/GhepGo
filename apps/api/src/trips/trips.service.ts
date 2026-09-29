@@ -82,6 +82,7 @@ export class TripsService {
         vehicle: true,
         payment: true,
         rating: true,
+        complaints: { select: { id: true, status: true, category: true } },
         ...groupInclude,
       },
     });
@@ -100,7 +101,7 @@ export class TripsService {
     return this.prisma.trip.findMany({
       where: { driverId: driver.id },
       orderBy: { requestedAt: 'desc' },
-      include: { customer: true, payment: true, ...groupInclude },
+      include: { customer: true, payment: true, complaints: { select: { id: true, status: true, category: true } }, ...groupInclude },
     });
   }
 

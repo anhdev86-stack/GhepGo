@@ -19,6 +19,7 @@ interface Notif {
 const linkFor = (n: Notif, role: string) => {
   const s = n.data?.screen;
   if (s === "wallet") return "/wallet";
+  if (s === "complaints") return role === "ADMIN" ? "/admin/complaints" : `/complaints${(n.data as any)?.complaintId ? `?id=${(n.data as any).complaintId}` : ""}`;
   if (role === "DRIVER") return "/driver";
   if (role === "ADMIN") return "/admin";
   return "/trips";

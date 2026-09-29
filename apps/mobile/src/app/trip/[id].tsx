@@ -120,6 +120,11 @@ export default function TripDetailScreen() {
           <Text style={styles.buttonText}>Đã thu tiền mặt {Number(trip.fare).toLocaleString("vi-VN")} đ</Text>
         </Pressable>
       )}
+      {["COMPLETED", "CANCELLED", "IN_PROGRESS"].includes(trip.status) && (
+        <Pressable onPress={() => router.push({ pathname: "/complaints", params: { tripId: trip.id } })}>
+          <Text style={{ color: "#64748b", textAlign: "center", textDecorationLine: "underline" }}>Báo cáo sự cố / khiếu nại</Text>
+        </Pressable>
+      )}
       {trip.status === "COMPLETED" && trip.payment?.status === "PAID" && (
         <Pressable style={[styles.button, { backgroundColor: "#64748b" }]} onPress={() => router.replace("/home")}>
           <Text style={styles.buttonText}>Về trang chính</Text>

@@ -112,6 +112,7 @@ export default function DriverPage() {
   const activeTrips = myTrips.filter(
     (t) => t.tripType === "PRIVATE" && !["COMPLETED", "CANCELLED"].includes(t.status),
   );
+  const recentDone = myTrips.filter((t) => ["COMPLETED", "CANCELLED"].includes(t.status)).slice(0, 5);
   const cashToConfirm = myTrips.filter(
     (t) => t.status === "COMPLETED" && t.payment?.method === "CASH" && t.payment?.status === "PENDING",
   );
@@ -238,6 +239,18 @@ export default function DriverPage() {
                   {NEXT_ACTION[trip.status].label}
                 </button>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {recentDone.length > 0 && (
+        <div className="bg-white p-4 rounded-lg border">
+          <h2 className="font-medium mb-2">Chuyến gần đây</h2>
+          {recentDone.map((t) => (
+            <div key={t.id} className="flex justify-between items-center text-sm py-1 border-t first:border-t-0">
+              <span className="truncate">{t.pickupAddress} → {t.dropoffAddress} · {t.status === "COMPLETED" ? "hoàn thành" : "đã huỷ"}</span>
+              <a href={`/complaints?tripId=${t.id}`} className="text-xs text-slate-500 underline whitespace-nowrap ml-2">Báo cáo</a>
             </div>
           ))}
         </div>

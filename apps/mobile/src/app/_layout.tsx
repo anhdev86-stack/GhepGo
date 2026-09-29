@@ -26,6 +26,7 @@ export default function RootLayout() {
           <Stack.Screen name="group/[id]" options={{ title: "Chuyến ghép" }} />
           <Stack.Screen name="earnings" options={{ title: "Thu nhập" }} />
           <Stack.Screen name="notifications" options={{ title: "Thông báo" }} />
+          <Stack.Screen name="complaints" options={{ title: "Khiếu nại & hỗ trợ" }} />
         </Stack>
       </AuthProvider>
     </SafeAreaProvider>

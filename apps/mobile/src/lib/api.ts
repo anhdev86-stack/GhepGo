@@ -107,4 +107,11 @@ export const api = {
   markNotificationRead: (token: string, id: string) =>
     request<any>(`/notifications/${id}/read`, { method: "PATCH", token }),
   markAllNotificationsRead: (token: string) => request<any>("/notifications/read-all", { method: "PATCH", token }),
+
+  createComplaint: (token: string, data: { tripId: string; category: string; description: string }) =>
+    request<any>("/complaints", { method: "POST", body: JSON.stringify(data), token }),
+  myComplaints: (token: string) => request<any[]>("/complaints/mine", { token }),
+  complaint: (token: string, id: string) => request<any>(`/complaints/${id}`, { token }),
+  complaintMessage: (token: string, id: string, body: string) =>
+    request<any>(`/complaints/${id}/messages`, { method: "POST", body: JSON.stringify({ body }), token }),
 };

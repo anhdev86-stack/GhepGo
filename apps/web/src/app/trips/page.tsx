@@ -161,6 +161,15 @@ export default function TripsPage() {
               </div>
             )}
             {trip.rating && <p className="text-xs text-slate-500 mt-2">Bạn đã đánh giá {trip.rating.score} ★</p>}
+            {["COMPLETED", "CANCELLED", "IN_PROGRESS"].includes(trip.status) && (
+              <p className="text-xs mt-2">
+                {trip.complaints?.some((c: any) => ["OPEN", "IN_REVIEW"].includes(c.status)) ? (
+                  <a href={`/complaints?id=${trip.complaints[0].id}`} className="text-orange-600 underline">Khiếu nại đang xử lý</a>
+                ) : (
+                  <a href={`/complaints?tripId=${trip.id}`} className="text-slate-500 underline">Báo cáo sự cố / khiếu nại</a>
+                )}
+              </p>
+            )}
 
             {CANCELLABLE.includes(trip.status) && (
               <button onClick={() => cancel(trip.id)} className="mt-3 text-sm text-red-600 underline">

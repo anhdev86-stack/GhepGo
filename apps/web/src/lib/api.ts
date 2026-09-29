@@ -162,6 +162,22 @@ export const api = {
   markAllNotificationsRead: (token: string) => request("/notifications/read-all", { method: "PATCH", token }),
   sendTestNotification: (token: string) => request("/notifications/test", { method: "POST", token }),
 
+  // ---- complaints ----
+  complaintCategories: (token: string) => request<{ value: string; label: string }[]>("/complaints/categories", { token }),
+  createComplaint: (token: string, body: { tripId: string; category: string; description: string }) =>
+    request<any>("/complaints", { method: "POST", token, body }),
+  myComplaints: (token: string) => request<any[]>("/complaints/mine", { token }),
+  complaint: (token: string, id: string) => request<any>(`/complaints/${id}`, { token }),
+  complaintMessage: (token: string, id: string, body: string) =>
+    request<any>(`/complaints/${id}/messages`, { method: "POST", token, body: { body } }),
+  adminComplaints: (token: string, status?: string) =>
+    request<any[]>(`/admin/complaints${status ? `?status=${status}` : ""}`, { token }),
+  resolveComplaint: (
+    token: string,
+    id: string,
+    body: { status: "IN_REVIEW" | "RESOLVED" | "REJECTED"; resolution?: string; refundAmount?: number; chargeDriver?: boolean },
+  ) => request<any>(`/admin/complaints/${id}`, { method: "PATCH", token, body }),
+
   // ---- fleet / reports ----
   rateTrip: (token: string, tripId: string, body: { score: number; comment?: string }) =>
     request(`/trips/${tripId}/rating`, { method: "POST", token, body }),

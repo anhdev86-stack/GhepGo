@@ -103,6 +103,17 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 - Provider SMS cắm được qua `SMS_PROVIDER`: `console` (dev: in ra log và trả `devCode` trong response khi không phải
   production), `esms` (eSMS.vn brandname, `ESMS_*`), `twilio` (`TWILIO_*`). `OTP_REQUIRED=false` để tắt khi dev.
 
+### Khiếu nại (`src/complaints`)
+
+- Khách hoặc tài xế của chuyến (đã bắt đầu/kết thúc) gửi `POST /complaints {tripId, category, description}`;
+  mỗi người một khiếu nại đang mở cho mỗi chuyến; bên kia tự động là "đối tượng bị khiếu nại" và xem được luồng.
+- Luồng tin nhắn `POST /complaints/:id/messages`: admin trả lời → chuyển `IN_REVIEW`; thông báo đẩy tới admin,
+  người khiếu nại và bên kia (bên kia chỉ nhận sau khi admin đã vào cuộc).
+- Admin `GET /admin/complaints?status`, `PATCH /admin/complaints/:id {status, resolution, refundAmount, chargeDriver}`:
+  `RESOLVED` kèm `refundAmount` → ghi `REFUND` vào ví khách (không vượt giá cước), `chargeDriver` → `ADJUSTMENT` trừ ví tài xế;
+  kết luận lưu thành tin nhắn cuối và gửi thông báo cho hai bên. Web `/complaints` (khách/tài xế), `/admin/complaints`;
+  mobile màn "Khiếu nại & hỗ trợ", nút báo cáo trên chi tiết chuyến.
+
 ### Push notification (`src/notifications`)
 
 - Thiết bị đăng ký qua `POST /notifications/devices {kind: EXPO|WEBPUSH, token, subscription?}`; hộp thư trong app:
@@ -249,6 +260,6 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
-- Khiếu nại, ràng buộc khu vực khi ghép chuyến.
+- Ràng buộc khu vực hoạt động khi ghép chuyến; SLA và phân công admin cho khiếu nại.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

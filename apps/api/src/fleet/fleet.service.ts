@@ -145,7 +145,7 @@ export class FleetService {
     const { start, end } = parseRange(from, to);
     const completedWhere = { status: 'COMPLETED' as const, completedAt: { gte: start, lte: end } };
 
-    const [byStatus, byType, fareAgg, paidAgg, daily, topDrivers, drivers, pendingWithdrawals] = await Promise.all([
+    const [byStatus, byType, fareAgg, paidAgg, daily, topDrivers, drivers, pendingWithdrawals, openComplaints] = await Promise.all([
       this.prisma.trip.groupBy({ by: ['status'], where: { requestedAt: { gte: start, lte: end } }, _count: true }),
       this.prisma.trip.groupBy({ by: ['tripType'], where: completedWhere, _count: true, _sum: { fare: true } }),
       this.prisma.trip.aggregate({ where: completedWhere, _sum: { fare: true, distanceMeters: true }, _count: true }),
@@ -157,6 +157,7 @@ export class FleetService {
       this.prisma.trip.groupBy({ by: ['driverId'], where: completedWhere, _count: true, _sum: { fare: true }, orderBy: { _sum: { fare: 'desc' } }, take: 10 }),
       this.prisma.driver.groupBy({ by: ['status'], _count: true }),
       this.prisma.withdrawal.aggregate({ where: { status: 'REQUESTED' }, _count: true, _sum: { amount: true } }),
+      this.prisma.complaint.count({ where: { status: { in: ['OPEN', 'IN_REVIEW'] } } }),
     ]);
 
     const driverNames = await this.prisma.driver.findMany({
@@ -190,6 +191,7 @@ export class FleetService {
       })),
       fleet: Object.fromEntries(drivers.map((d) => [d.status, d._count])),
       pendingWithdrawals: { count: pendingWithdrawals._count, amount: Number(pendingWithdrawals._sum.amount ?? 0) },
+      openComplaints,
     };
   }
 }

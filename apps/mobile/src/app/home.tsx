@@ -313,6 +313,9 @@ export default function HomeScreen() {
           >
             <Text style={styles.buttonText}>Thông báo{unread > 0 ? ` (${unread} mới)` : ""}</Text>
           </Pressable>
+          <Pressable style={[styles.button, { marginTop: 8, backgroundColor: "#64748b" }]} onPress={() => router.push("/complaints")}>
+            <Text style={styles.buttonText}>Khiếu nại & hỗ trợ</Text>
+          </Pressable>
           <Pressable onPress={logout} style={{ marginTop: 16 }}>
           <Text style={{ color: "#dc2626", textAlign: "center" }}>Đăng xuất</Text>
           </Pressable>

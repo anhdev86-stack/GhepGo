@@ -74,6 +74,7 @@ export default function ReportsPage() {
               ["Huỷ", ov.trips.byStatus.CANCELLED ?? 0],
               ["Xe ghép / bao xe", `${ov.trips.byType.SHARED?.count ?? 0} / ${ov.trips.byType.PRIVATE?.count ?? 0}`],
               ["Tài xế trực / chạy", `${ov.fleet.AVAILABLE ?? 0} / ${ov.fleet.ON_TRIP ?? 0}`],
+              ["Khiếu nại đang mở", ov.openComplaints ?? 0],
             ].map(([label, value]) => (
               <div key={String(label)} className="bg-white p-3 rounded-lg border">
                 <p className="text-slate-500">{label}</p>

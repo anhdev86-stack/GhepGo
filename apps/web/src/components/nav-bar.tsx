@@ -26,18 +26,21 @@ export function NavBar() {
               <Link href="/book">Đặt xe</Link>
               <Link href="/trips">Chuyến của tôi</Link>
               <Link href="/wallet">Ví</Link>
+              <Link href="/complaints">Hỗ trợ</Link>
             </>
           )}
           {user?.role === "DRIVER" && (
             <>
               <Link href="/driver">Bảng tài xế</Link>
               <Link href="/wallet">Thu nhập</Link>
+              <Link href="/complaints">Hỗ trợ</Link>
             </>
           )}
           {user?.role === "ADMIN" && (
             <>
               <Link href="/admin">Quản trị</Link>
               <Link href="/admin/reports">Báo cáo</Link>
+              <Link href="/admin/complaints">Khiếu nại</Link>
             </>
           )}
           {user && (

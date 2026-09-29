@@ -45,6 +45,7 @@ export async function getExpoPushToken(): Promise<string | null> {
 function navigateFor(data: Record<string, unknown> | undefined) {
   const screen = data?.screen;
   if (screen === "wallet") router.push("/earnings");
+  else if (screen === "complaints") router.push({ pathname: "/complaints", params: data?.complaintId ? { id: String(data.complaintId) } : {} });
   else if (screen === "group" && data?.groupId) router.push({ pathname: "/group/[id]", params: { id: String(data.groupId) } });
   else if (screen === "trip" && data?.tripId) router.push({ pathname: "/trip/[id]", params: { id: String(data.tripId) } });
   else router.push("/home");

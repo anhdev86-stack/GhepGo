@@ -34,6 +34,7 @@ export default function NotificationsScreen() {
     }
     const d = n.data ?? {};
     if (d.screen === "wallet") router.push("/earnings");
+    else if (d.screen === "complaints") router.push({ pathname: "/complaints", params: d.complaintId ? { id: d.complaintId } : {} });
     else if (d.screen === "group" && d.groupId) router.push({ pathname: "/group/[id]", params: { id: d.groupId } });
     else if (d.tripId) router.push({ pathname: "/trip/[id]", params: { id: d.tripId } });
     else router.push("/home");
