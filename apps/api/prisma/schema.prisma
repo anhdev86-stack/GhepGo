@@ -118,6 +118,13 @@ enum ComplaintStatus {
   REJECTED
 }
 
+enum ComplaintPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
 // -------------------- Core models --------------------
 
 model User {
@@ -135,9 +142,10 @@ model User {
   ratingsGiven  Rating[]
   pushDevices   PushDevice[]
   notifications Notification[]
-  complaintsFiled   Complaint[]        @relation("ComplaintReporter")
-  complaintsAgainst Complaint[]        @relation("ComplaintAgainst")
-  complaintMessages ComplaintMessage[]
+  complaintsFiled    Complaint[]        @relation("ComplaintReporter")
+  complaintsAgainst  Complaint[]        @relation("ComplaintAgainst")
+  complaintsAssigned Complaint[]        @relation("ComplaintAssignee")
+  complaintMessages  ComplaintMessage[]
 
   @@map("users")
 }
@@ -429,15 +437,29 @@ model Complaint {
   category       ComplaintCategory
   description    String
   status         ComplaintStatus   @default(OPEN)
+  priority       ComplaintPriority @default(NORMAL)
   resolution     String?
   refundAmount   Decimal?          @db.Decimal(12, 2)
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   resolvedAt     DateTime?
 
+  // SLA: deadlines derived from priority; first response = first admin message or decision.
+  firstResponseDueAt DateTime
+  dueAt              DateTime
+  firstResponseAt    DateTime?
+  overdueNotifiedAt  DateTime?
+
+  // Ownership: the admin currently handling the case (auto-balanced on create).
+  assigneeId String?
+  assignee   User?     @relation("ComplaintAssignee", fields: [assigneeId], references: [id])
+  assignedAt DateTime?
+
   messages ComplaintMessage[]
 
   @@index([status, createdAt])
+  @@index([status, dueAt])
+  @@index([assigneeId, status])
   @@index([reporterId])
   @@index([tripId])
   @@map("complaints")

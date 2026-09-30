@@ -59,7 +59,7 @@ export class TestApp {
   }
 
   /** Full OTP registration flow. */
-  async register(role: 'CUSTOMER' | 'DRIVER', fullName = role): Promise<Session> {
+  async register(role: 'CUSTOMER' | 'DRIVER', fullName: string = role): Promise<Session> {
     const phone = `09${(Date.now() + Math.floor(Math.random() * 1_000_000)).toString().slice(-8)}`;
     const sent = await this.call('post', '/auth/otp/send', { body: { phone, purpose: 'REGISTER' } });
     const ver = await this.call('post', '/auth/otp/verify', { body: { phone, purpose: 'REGISTER', code: sent.devCode } });

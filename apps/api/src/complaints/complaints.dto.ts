@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBooleanString, IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min, MinLength } from 'class-validator';
 
 export enum ComplaintCategoryDto {
   DRIVER_BEHAVIOR = 'DRIVER_BEHAVIOR',
@@ -52,4 +52,38 @@ export class ResolveComplaintDto {
   /** Also debit the driver's wallet by the refund (their fault). Default false. */
   @IsOptional()
   chargeDriver?: boolean;
+}
+
+export const PRIORITY_VALUES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'] as const;
+
+export class AssignComplaintDto {
+  /** Admin user id, or null to unassign. */
+  @IsOptional()
+  @IsString()
+  assigneeId?: string | null;
+}
+
+export class SetPriorityDto {
+  @IsIn(PRIORITY_VALUES)
+  priority: (typeof PRIORITY_VALUES)[number];
+}
+
+export class AdminListQueryDto {
+  @IsOptional()
+  @IsIn(['OPEN', 'IN_REVIEW', 'RESOLVED', 'REJECTED', 'ACTIVE'])
+  status?: string;
+
+  /** "me", "unassigned" or an admin user id. */
+  @IsOptional()
+  @IsString()
+  assignee?: string;
+
+  @IsOptional()
+  @IsIn(PRIORITY_VALUES)
+  priority?: (typeof PRIORITY_VALUES)[number];
+
+  /** "1" → only complaints past a deadline (first response or resolution). */
+  @IsOptional()
+  @IsBooleanString()
+  overdue?: string;
 }

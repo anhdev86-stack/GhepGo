@@ -208,8 +208,23 @@ export const api = {
   complaint: (token: string, id: string) => request<any>(`/complaints/${id}`, { token }),
   complaintMessage: (token: string, id: string, body: string) =>
     request<any>(`/complaints/${id}/messages`, { method: "POST", token, body: { body } }),
-  adminComplaints: (token: string, status?: string) =>
-    request<any[]>(`/admin/complaints${status ? `?status=${status}` : ""}`, { token }),
+  adminComplaints: (token: string, filters: { status?: string; assignee?: string; priority?: string; overdue?: boolean } = {}) => {
+    const qs = new URLSearchParams();
+    if (filters.status) qs.set("status", filters.status);
+    if (filters.assignee) qs.set("assignee", filters.assignee);
+    if (filters.priority) qs.set("priority", filters.priority);
+    if (filters.overdue) qs.set("overdue", "1");
+    const q = qs.toString();
+    return request<any[]>(`/admin/complaints${q ? `?${q}` : ""}`, { token });
+  },
+  complaintStaff: (token: string) =>
+    request<{ id: string; fullName: string; phone: string; active: number; overdue: number }[]>("/admin/complaints/staff", { token }),
+  complaintSla: (token: string, from?: string, to?: string) =>
+    request<any>(`/admin/complaints/sla?${from ? `from=${from}&` : ""}${to ? `to=${to}` : ""}`, { token }),
+  assignComplaint: (token: string, id: string, assigneeId: string | null) =>
+    request<any>(`/admin/complaints/${id}/assign`, { method: "PATCH", token, body: { assigneeId } }),
+  setComplaintPriority: (token: string, id: string, priority: string) =>
+    request<any>(`/admin/complaints/${id}/priority`, { method: "PATCH", token, body: { priority } }),
   resolveComplaint: (
     token: string,
     id: string,

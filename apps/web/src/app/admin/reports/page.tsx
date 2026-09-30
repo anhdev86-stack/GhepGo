@@ -26,6 +26,7 @@ export default function ReportsPage() {
   const [zones, setZones] = useState<any[]>([]);
   const [zoneStats, setZoneStats] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<any[]>([]);
+  const [sla, setSla] = useState<any | null>(null);
   const [zone, setZone] = useState({ name: "", centerLat: "10.7769", centerLng: "106.7009", radiusKm: "5", polygonText: "" });
   const [editingZone, setEditingZone] = useState<string | null>(null);
   const [drawNew, setDrawNew] = useState(false);
@@ -38,6 +39,7 @@ export default function ReportsPage() {
     api.zones(token).then(setZones).catch(() => {});
     api.zoneStats(token, from, `${to}T23:59:59`).then((r) => setZoneStats(r.zones)).catch(() => {});
     api.allDrivers(token).then(setDrivers).catch(() => {});
+    api.complaintSla(token, from, `${to}T23:59:59`).then(setSla).catch(() => {});
   }, [token, from, to]);
 
   useEffect(() => {
@@ -151,6 +153,51 @@ export default function ReportsPage() {
             </div>
           </div>
         </>
+      )}
+
+      {sla && (
+        <Card className="mb-5">
+          <CardTitle
+            description={`${sla.total} khiếu nại trong khoảng · ${sla.resolved} đã đóng · đang mở ${sla.backlog.open} (${sla.backlog.overdue} quá hạn, ${sla.backlog.unassigned} chưa phân công)`}
+            action={
+              <a href="/admin/complaints" className="link text-sm">
+                Mở hộp thư khiếu nại
+              </a>
+            }
+          >
+            SLA khiếu nại
+          </CardTitle>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+            <Stat label="Phản hồi đúng hạn" value={sla.firstResponseWithinSlaPct != null ? `${sla.firstResponseWithinSlaPct}%` : "—"} hint={sla.avgFirstResponseMin != null ? `TB ${sla.avgFirstResponseMin} phút` : "Chưa có dữ liệu"} tone="brand" />
+            <Stat label="Giải quyết đúng hạn" value={sla.resolvedWithinSlaPct != null ? `${sla.resolvedWithinSlaPct}%` : "—"} hint={sla.avgResolveMin != null ? `TB ${Math.round(sla.avgResolveMin / 6) / 10} giờ` : "Chưa có dữ liệu"} tone="green" />
+            <Stat label="Quá hạn hiện tại" value={sla.backlog.overdue} tone={sla.backlog.overdue > 0 ? "red" : "slate"} />
+            <Stat label="Chưa phân công" value={sla.backlog.unassigned} tone={sla.backlog.unassigned > 0 ? "amber" : "slate"} />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Ưu tiên</th>
+                  <th>Phản hồi đầu tiên</th>
+                  <th>Giải quyết</th>
+                  <th className="text-right">Số khiếu nại</th>
+                  <th className="text-right">Giải quyết đúng hạn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(["URGENT", "HIGH", "NORMAL", "LOW"] as const).map((p) => (
+                  <tr key={p}>
+                    <td className="font-medium text-ink-900">{{ URGENT: "Khẩn cấp", HIGH: "Cao", NORMAL: "Bình thường", LOW: "Thấp" }[p]}</td>
+                    <td className="text-ink-600">{fmtClock(sla.policy[p].firstResponseMin)}</td>
+                    <td className="text-ink-600">{fmtClock(sla.policy[p].resolveMin)}</td>
+                    <td className="text-right tabular-nums">{sla.byPriority[p]?.total ?? 0}</td>
+                    <td className="text-right tabular-nums">{sla.byPriority[p]?.resolvedWithinSla != null ? `${sla.byPriority[p].resolvedWithinSla}%` : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <Card className="mb-5">
@@ -386,4 +433,8 @@ export default function ReportsPage() {
       </Card>
     </div>
   );
+}
+
+function fmtClock(min: number) {
+  return min < 60 ? `${min} phút` : min % 60 === 0 ? `${min / 60} giờ` : `${Math.round(min / 6) / 10} giờ`;
 }

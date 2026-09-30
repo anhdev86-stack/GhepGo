@@ -60,15 +60,48 @@ describe('Zones, complaints, notifications, reports (e2e)', () => {
     expect(cp.againstUser.id).toBe(d.user.id);
     await expectStatus(t.call('post', '/complaints', { token: c.token, body: { tripId: trip.id, category: 'FARE', description: 'Khiếu nại thứ hai cùng chuyến' } }), 400);
     await expectStatus(t.call('get', `/complaints/${cp.id}`, { token: stranger.token }), 403);
+    // SLA + ownership: ROUTE → NORMAL priority, deadlines set, auto-assigned to the least-loaded admin.
+    expect(cp.priority).toBe('NORMAL');
+    expect(new Date(cp.dueAt).getTime()).toBeGreaterThan(new Date(cp.firstResponseDueAt).getTime());
+    expect(cp.assignee).not.toBeNull();
+    expect(cp.sla.overdue).toBe(false);
+    const mine = await t.call('get', `/admin/complaints?assignee=${cp.assignee.id}&status=ACTIVE`, { token: admin.token });
+    expect(mine.some((x: any) => x.id === cp.id)).toBe(true);
+    await expectStatus(t.call('patch', `/admin/complaints/${cp.id}/assign`, { token: admin.token, body: { assigneeId: c.user.id } }), 400);
+    const reassigned = await t.call('patch', `/admin/complaints/${cp.id}/assign`, { token: admin.token, body: { assigneeId: admin.user.id } });
+    expect(reassigned.assignee.id).toBe(admin.user.id);
+    const urgent = await t.call('patch', `/admin/complaints/${cp.id}/priority`, { token: admin.token, body: { priority: 'URGENT' } });
+    expect(new Date(urgent.dueAt).getTime()).toBeLessThan(new Date(cp.dueAt).getTime());
+    const staff = await t.call('get', '/admin/complaints/staff', { token: admin.token });
+    expect(staff.find((s: any) => s.id === admin.user.id).active).toBeGreaterThanOrEqual(1);
+    // Force the first-response clock into the past and run the sweep: the owner is told once.
+    await t.prisma.complaint.update({ where: { id: cp.id }, data: { firstResponseDueAt: new Date(Date.now() - 60_000) } });
+    expect((await t.call('post', '/admin/complaints/sweep', { token: admin.token })).notified).toBeGreaterThanOrEqual(1);
+    expect((await t.call('post', '/admin/complaints/sweep', { token: admin.token })).notified).toBe(0);
+    const overdueList = await t.call('get', '/admin/complaints?overdue=1', { token: admin.token });
+    expect(overdueList.some((x: any) => x.id === cp.id && x.sla.overdue)).toBe(true);
+    const slaBefore = await t.call('get', '/admin/complaints/sla', { token: admin.token });
+    expect(slaBefore.backlog.overdue).toBeGreaterThanOrEqual(1);
+    expect(slaBefore.policy.URGENT.firstResponseMin).toBe(15);
+
     const afterAdmin = await t.call('post', `/complaints/${cp.id}/messages`, { token: admin.token, body: { body: 'Đang kiểm tra GPS' } });
     expect(afterAdmin.status).toBe('IN_REVIEW');
+    expect(afterAdmin.firstResponseAt).not.toBeNull();
+    expect(afterAdmin.sla.firstResponse.met).toBe(false);
     await expectStatus(t.call('patch', `/admin/complaints/${cp.id}`, { token: admin.token, body: { status: 'RESOLVED', refundAmount: 99999999 } }), 400);
     const res = await t.call('patch', `/admin/complaints/${cp.id}`, { token: admin.token, body: { status: 'RESOLVED', resolution: 'Hoàn 20.000 đ', refundAmount: 20000, chargeDriver: true } });
     expect(res.status).toBe('RESOLVED');
     expect(Number((await t.call('get', '/wallet/me', { token: c.token })).balance)).toBe(20000);
     await expectStatus(t.call('post', `/complaints/${cp.id}/messages`, { token: c.token, body: { body: 'cảm ơn' } }), 400);
 
+    expect(res.sla.resolution.met).toBe(true);
+    const slaAfter = await t.call('get', '/admin/complaints/sla', { token: admin.token });
+    expect(slaAfter.resolved).toBeGreaterThanOrEqual(1);
+
     await sleep(300);
+    const adminTitles = (await t.call('get', '/notifications', { token: admin.token })).map((n: any) => n.title);
+    expect(adminTitles.some((x: string) => x.startsWith('Quá hạn SLA'))).toBe(true);
+    expect(adminTitles.some((x: string) => x.startsWith('Bạn được phân công'))).toBe(true);
     const titles = (await t.call('get', '/notifications', { token: c.token })).map((n: any) => n.title);
     expect(titles.some((x: string) => x.includes('Khiếu nại đã giải quyết'))).toBe(true);
     expect(titles).toContain('Chuyến đi hoàn thành');
