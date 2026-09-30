@@ -85,6 +85,10 @@ export function MapViewInner({
     const t = setTimeout(() => m.invalidateSize(), 50);
     return () => {
       clearTimeout(t);
+      // Unmounting mid zoom/pan animation makes Leaflet's pending transitionend touch removed panes
+      // ("reading '_leaflet_pos'"): stop animations and drop handlers before removing the map.
+      m.stop();
+      m.off();
       m.remove();
       map.current = null;
       tileLayer.current = null;
@@ -107,7 +111,7 @@ export function MapViewInner({
   useEffect(() => {
     const m = map.current;
     if (!m || !center || fitted.current !== undefined) return;
-    m.setView([center.lat, center.lng], m.getZoom());
+    m.setView([center.lat, center.lng], m.getZoom(), { animate: false });
   }, [center?.lat, center?.lng]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Markers: diff by id so live positions move instead of flickering.
@@ -194,8 +198,9 @@ export function MapViewInner({
     const first = fitted.current === undefined && autoFit;
     if (!first && fitted.current === fitKey) return;
     fitted.current = fitKey ?? null;
-    if (pts.length === 1) m.setView(pts[0], Math.max(m.getZoom(), 15));
-    else m.fitBounds(L.latLngBounds(pts), { padding: [28, 28], maxZoom: 16 });
+    // No animation: these fits run on data changes, often right before the card holding the map re-renders.
+    if (pts.length === 1) m.setView(pts[0], Math.max(m.getZoom(), 15), { animate: false });
+    else m.fitBounds(L.latLngBounds(pts), { padding: [28, 28], maxZoom: 16, animate: false });
   }, [fitKey, autoFit, markers, polylines, polygons, circles]);
 
   // Leaflet owns the inner div's class list; React only ever touches the wrapper.
