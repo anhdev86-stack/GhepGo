@@ -8,7 +8,7 @@ Tiến độ theo lộ trình:
 |---|---|---|
 | 1. Nền móng | Auth, đặt bao xe, app tài xế, admin, thanh toán tiền mặt | ✅ |
 | 2. Ghép khách | Ghép theo tuyến/hướng, chia giá theo quãng đường, UI điểm dừng | ✅ |
-| 3. Tối ưu tuyến & realtime | Tối ưu thứ tự đón/trả (exact + 2-opt), ghép động khi xe đang chạy, GPS realtime qua Socket.io + Redis pub/sub, huỷ chuyến | ✅ (chưa có demand forecasting) |
+| 3. Tối ưu tuyến & realtime | Tối ưu thứ tự đón/trả (exact + 2-opt), ghép động khi xe đang chạy, GPS realtime qua Socket.io + Redis pub/sub, huỷ chuyến, dự báo nhu cầu theo giờ/khu vực | ✅ |
 | 4. Đội xe nâng cao + thanh toán | Ví & sổ cái, nạp qua cổng (mock, cùng luồng callback VNPay/Momo), hoa hồng, rút tiền, ca làm việc, khu vực, KPI, đánh giá, báo cáo đối soát | ✅ (cổng thật chưa tích hợp) |
 | 5. Mở rộng | A/B test thuật toán, microservices, CSKH | ⏳ |
 
@@ -137,6 +137,20 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 - API: `GET /zones` (đang hoạt động), `GET /zones/coverage?lat&lng` (điểm có được phục vụ không),
   admin `POST/PATCH/DELETE /admin/zones[/:id]` (không xoá khi còn tài xế), `GET /admin/reports/zones?from&to`.
   Web: màn đặt xe báo vùng phục vụ và chặn nút đặt; bảng tài xế hiển thị khu vực; `/admin/reports` quản lý và thống kê theo khu vực.
+
+### Dự báo nhu cầu (`src/forecast`)
+
+- Mô hình mùa vụ theo **giờ trong tuần** (7×24 ô): số yêu cầu đặt xe mỗi ô là trung bình có trọng số giảm dần theo tuần
+  (tuần gần nhất nặng nhất, hệ số 0,7) trên `weeks` tuần gần đây (mặc định 8, tối đa 12), múi giờ `FORECAST_TZ`
+  (mặc định Asia/Ho_Chi_Minh). Nguồn cung là số tài xế trực trung bình cùng ô, tính từ `driver_shifts`; năng lực =
+  tài xế × chuyến/giờ trực đo được (mặc định 1,2 khi ít dữ liệu). Không cần thư viện ML; kết quả cache Redis 5 phút.
+- `GET /admin/forecast/profile?zoneId&weeks` (ma trận cầu/cung, ô cao điểm, độ tin cậy theo số tuần có dữ liệu),
+  `GET /admin/forecast?horizon=24&zoneId` (từng giờ tới: cầu, tài xế, năng lực, chênh lệch; tóm tắt giờ thiếu xe và số
+  tài xế cần thêm), `GET /admin/forecast/hotspots?zoneId&at&hours&limit&lat&lng` (ô ~1 km có nhiều yêu cầu nhất cho
+  khung giờ, kèm số tài xế đang trực trong 1 km và cờ thiếu xe), `GET /drivers/me/hotspots` (điểm nóng trong khu vực
+  của tài xế, xếp theo gần vị trí hiện tại).
+- Web `/admin/forecast`: bản đồ nhiệt 7×24, biểu đồ 24 giờ tới cầu so với năng lực, bản đồ điểm nóng (vòng đỏ khi
+  thiếu xe) lọc theo khu vực và số tuần. Trang tài xế và app tài xế gợi ý "điểm đông khách giờ này" khi đang trực rảnh.
 
 ### Khiếu nại (`src/complaints`)
 
@@ -288,7 +302,7 @@ khi app không ở foreground (mở app thì socket đảm nhiệm để tránh 
 
 ```bash
 cd apps/api
-pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, điểm tuyến geo, health
+pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, điểm tuyến geo, SLA, dự báo, health
 pnpm test:e2e      # e2e (vitest + supertest + socket.io-client) trên Postgres + Redis thật: 17 kịch bản
 pnpm build
 ```
@@ -297,7 +311,7 @@ E2E (`apps/api/test/*.e2e-spec.ts`) khởi động toàn bộ AppModule trên c�
 OTP/đăng ký/refresh/logout/khoá đăng nhập, ghép nhóm + ghép động + huỷ + race nhận chuyến + sự kiện socket,
 ví/hoa hồng/fallback tiền mặt/rút tiền/IPN VNPay và MoMo, khu vực (tròn + đa giác), khiếu nại + hoàn tiền,
 push device, đánh giá, KPI, hết hạn chuyến, cấu hình bản đồ/tuyến nhiều điểm/reverse geocode, SLA khiếu nại
-(tự phân công, đổi người xử lý/ưu tiên, quét quá hạn, báo cáo SLA). Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
+(tự phân công, đổi người xử lý/ưu tiên, quét quá hạn, báo cáo SLA), dự báo nhu cầu (profile, 24 giờ tới, điểm nóng). Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
 không mạng). CI chạy cả unit lẫn e2e.
 
 ## CI/CD và triển khai
@@ -350,8 +364,8 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
   https://business.momo.vn . IPN MoMo được gửi kèm mỗi request nên chỉ cần `API_PUBLIC_URL` truy cập được từ Internet.
 - **Bản đồ**: lấy Goong API key (hoặc Mapbox) cho production và đặt `MAP_TILE_URL` thay tile OSM công cộng; Google Maps key
   cho development build Android.
-- **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
-  khi nhóm > 5 khách hoặc ghép nhiều xe.
+- Cân nhắc OR-Tools khi nhóm > 5 khách hoặc ghép nhiều xe; nâng mô hình dự báo (ngày lễ, thời tiết) khi có
+  một năm dữ liệu.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

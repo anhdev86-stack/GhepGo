@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Linking } from "react-native";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../contexts/auth-context";
 import { useDriverLocationStream, useRealtime, useSocketEvent, WS } from "../lib/realtime";
@@ -29,6 +30,7 @@ export default function HomeScreen() {
   const [model, setModel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [hotspots, setHotspots] = useState<any[]>([]);
 
   const { lastFix, geoError } = useDriverLocationStream(socket, status !== "OFFLINE");
   const [bgState, setBgState] = useState<BackgroundPermission | "off" | "error">("off");
@@ -70,6 +72,7 @@ export default function HomeScreen() {
       setAvailable(a);
       setAvailableGroups(ag);
       setMyGroups(mg);
+      api.myHotspots(token, 3).then((r) => setHotspots(r.hotspots ?? [])).catch(() => setHotspots([]));
     } catch {
       // ignore transient polling errors
     }
@@ -197,6 +200,26 @@ export default function HomeScreen() {
               </Pressable>
             </View>
           </View>
+
+          {status !== "OFFLINE" && myGroups.length === 0 && hotspots.length > 0 && (
+            <View style={[styles.card, { borderColor: "#fde68a", backgroundColor: "#fffbeb" }]}>
+              <Text style={styles.sectionTitle}>Điểm đông khách giờ này</Text>
+              {hotspots.map((h, i) => (
+                <Pressable
+                  key={h.key}
+                  style={styles.row}
+                  onPress={() => Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${h.lat},${h.lng}`)}
+                >
+                  <Text style={styles.itemText}>
+                    {i + 1}. {h.distanceMeters != null ? `${(h.distanceMeters / 1000).toFixed(1)} km` : "—"} · {h.expectedRequests} yêu cầu/giờ
+                    {h.undersupplied ? " · thiếu xe" : ""}
+                  </Text>
+                  <Text style={{ color: "#0b8c75", fontWeight: "600" }}>Chỉ đường</Text>
+                </Pressable>
+              ))}
+              <Text style={styles.muted}>Ước lượng từ lịch sử đặt xe cùng khung giờ, xếp theo gần bạn.</Text>
+            </View>
+          )}
 
           {myGroups.length > 0 && (
             <View>
