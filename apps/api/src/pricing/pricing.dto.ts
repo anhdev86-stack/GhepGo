@@ -30,7 +30,7 @@ export class PricingRuleBodyDto {
 }
 
 export class PromotionBodyDto {
-  @IsOptional() @IsString() @Matches(/^[A-Z0-9_-]{3,32}$/, { message: 'Mã gồm 3–32 ký tự A–Z, 0–9, _ hoặc -' }) code?: string;
+  @IsOptional() @IsString() @Matches(/^[A-Za-z0-9_-]{3,32}$/, { message: 'Mã gồm 3–32 ký tự A–Z, 0–9, _ hoặc -' }) code?: string;
   @IsOptional() @IsString() @MaxLength(200) description?: string;
   @IsOptional() @IsEnum(['PERCENT', 'FIXED']) type?: 'PERCENT' | 'FIXED';
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) value?: number;
