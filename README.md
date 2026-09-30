@@ -144,6 +144,17 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
   mỗi người một khiếu nại đang mở cho mỗi chuyến; bên kia tự động là "đối tượng bị khiếu nại" và xem được luồng.
 - Luồng tin nhắn `POST /complaints/:id/messages`: admin trả lời → chuyển `IN_REVIEW`; thông báo đẩy tới admin,
   người khiếu nại và bên kia (bên kia chỉ nhận sau khi admin đã vào cuộc).
+- **SLA & phân công**: mỗi khiếu nại có `priority` (theo loại: SAFETY → khẩn cấp, PAYMENT/LOST_ITEM → cao, OTHER → thấp, còn lại bình thường)
+  và hai mốc hạn `firstResponseDueAt` / `dueAt` tính từ `sla.ts` (mặc định khẩn cấp 15 phút / 4 giờ, cao 1 giờ / 24 giờ,
+  bình thường 4 giờ / 48 giờ, thấp 24 giờ / 72 giờ; đổi bằng `COMPLAINT_SLA_<PRIORITY>="phútPhảnHồi,phútGiảiQuyết"`).
+  Khiếu nại mới tự phân công cho admin đang có ít việc nhất (`COMPLAINT_AUTO_ASSIGN=false` để tắt); admin trả lời hoặc
+  "nhận xử lý" một ca chưa có chủ thì ca đó thành của họ; tin nhắn đầu của admin dừng đồng hồ phản hồi. Cron 5 phút
+  (khoá Redis) nhắc người xử lý khi quá hạn (mỗi 4 giờ một lần), leo thang cho toàn bộ admin khi quá 2× thời hạn.
+  Endpoints: `GET /admin/complaints?status=ACTIVE|…&assignee=me|unassigned|<id>&priority&overdue=1`,
+  `PATCH /admin/complaints/:id/assign {assigneeId|null}`, `PATCH /admin/complaints/:id/priority {priority}`,
+  `GET /admin/complaints/staff` (tải từng admin), `GET /admin/complaints/sla?from&to` (tỷ lệ đúng hạn, thời gian TB,
+  backlog, chính sách), `POST /admin/complaints/sweep`. Web `/admin/complaints` có tab Tất cả / Của tôi / Chưa phân công /
+  Quá hạn, huy hiệu ưu tiên và đếm ngược SLA, chọn người xử lý và ưu tiên trong luồng; `/admin/reports` có mục SLA khiếu nại.
 - Admin `GET /admin/complaints?status`, `PATCH /admin/complaints/:id {status, resolution, refundAmount, chargeDriver}`:
   `RESOLVED` kèm `refundAmount` → ghi `REFUND` vào ví khách (không vượt giá cước), `chargeDriver` → `ADJUSTMENT` trừ ví tài xế;
   kết luận lưu thành tin nhắn cuối và gửi thông báo cho hai bên. Web `/complaints` (khách/tài xế), `/admin/complaints`;
@@ -285,7 +296,8 @@ pnpm build
 E2E (`apps/api/test/*.e2e-spec.ts`) khởi động toàn bộ AppModule trên cổng ngẫu nhiên và chạy các luồng thật:
 OTP/đăng ký/refresh/logout/khoá đăng nhập, ghép nhóm + ghép động + huỷ + race nhận chuyến + sự kiện socket,
 ví/hoa hồng/fallback tiền mặt/rút tiền/IPN VNPay và MoMo, khu vực (tròn + đa giác), khiếu nại + hoàn tiền,
-push device, đánh giá, KPI, hết hạn chuyến, cấu hình bản đồ/tuyến nhiều điểm/reverse geocode. Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
+push device, đánh giá, KPI, hết hạn chuyến, cấu hình bản đồ/tuyến nhiều điểm/reverse geocode, SLA khiếu nại
+(tự phân công, đổi người xử lý/ưu tiên, quét quá hạn, báo cáo SLA). Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
 không mạng). CI chạy cả unit lẫn e2e.
 
 ## CI/CD và triển khai
@@ -341,6 +353,5 @@ chuyến ví trừ đúng `fare` / cộng tài xế `fare×0.8`, chuyến tiền
 - **Giai đoạn 3 còn lại**: dự báo nhu cầu theo khung giờ/khu vực (cần dữ liệu thực); cân nhắc OR-Tools
   khi nhóm > 5 khách hoặc ghép nhiều xe.
 - **SMS thật**: đăng ký brandname eSMS.vn (hoặc Twilio) và điền `SMS_PROVIDER` + credentials; luồng OTP đã sẵn sàng.
-- SLA và phân công admin cho khiếu nại.
 - Nominatim công cộng có thể bị chặn theo mạng (autocomplete rỗng) — dùng Goong hoặc self-host Nominatim.
 - PostGIS đang bật extension nhưng chưa dùng cho query (Redis GEO + Haversine đủ cho quy mô hiện tại).

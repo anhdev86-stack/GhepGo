@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
-import { Alert, Avatar, Badge, Button, Field, Input, RouteLine, Spinner, Textarea, type Tone } from "@/components/ui";
+import { Alert, Avatar, Badge, Button, Field, Input, RouteLine, Select, Spinner, Textarea, type Tone } from "@/components/ui";
+import { PRIORITY, PriorityBadge, SlaBadge } from "@/components/complaint-sla";
 
 export const COMPLAINT_STATUS: Record<string, { label: string; tone: Tone }> = {
   OPEN: { label: "Mới", tone: "amber" },
@@ -24,7 +25,7 @@ export const CATEGORY_LABEL: Record<string, string> = {
 const vnd = (n: unknown) => Number(n).toLocaleString("vi-VN") + " đ";
 
 /** Complaint detail + message thread; admins get the resolve panel. */
-export function ComplaintThread({ id, onChanged }: { id: string; onChanged?: () => void }) {
+export function ComplaintThread({ id, onChanged, staff = [] }: { id: string; onChanged?: () => void; staff?: { id: string; fullName: string; active: number }[] }) {
   const { token, user } = useAuth();
   const [c, setC] = useState<any | null>(null);
   const [msg, setMsg] = useState("");
@@ -76,10 +77,55 @@ export function ComplaintThread({ id, onChanged }: { id: string; onChanged?: () 
             {c.againstUser ? ` ${c.againstUser.fullName}` : ""} · {new Date(c.createdAt).toLocaleString("vi-VN")}
           </p>
         </div>
-        <Badge tone={st.tone} dot>
-          {st.label}
-        </Badge>
+        <span className="flex flex-col items-end gap-1.5">
+          <Badge tone={st.tone} dot>
+            {st.label}
+          </Badge>
+          <span className="flex items-center gap-1.5">
+            <PriorityBadge priority={c.priority} />
+            <SlaBadge c={c} />
+          </span>
+        </span>
       </div>
+
+      {user?.role === "ADMIN" && !closed && (
+        <div className="grid sm:grid-cols-2 gap-3 rounded-xl bg-ink-50 p-3">
+          <Field label="Người xử lý">
+            <Select className="py-1.5 text-sm bg-white" value={c.assignee?.id ?? ""} disabled={busy} onChange={(e) => run(() => api.assignComplaint(token!, id, e.target.value || null))}>
+              <option value="">— chưa phân công —</option>
+              {staff.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.fullName}
+                  {s.id === user.id ? " (bạn)" : ""} · {s.active} đang mở
+                </option>
+              ))}
+              {c.assignee && !staff.some((s) => s.id === c.assignee.id) && <option value={c.assignee.id}>{c.assignee.fullName}</option>}
+            </Select>
+          </Field>
+          <Field label="Ưu tiên" hint={c.assignedAt ? `Phân công ${new Date(c.assignedAt).toLocaleString("vi-VN")}` : undefined}>
+            <Select className="py-1.5 text-sm bg-white" value={c.priority} disabled={busy} onChange={(e) => run(() => api.setComplaintPriority(token!, id, e.target.value))}>
+              {Object.entries(PRIORITY)
+                .sort((a, b) => b[1].rank - a[1].rank)
+                .map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.label}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+          <p className="sm:col-span-2 text-xs text-ink-500">
+            Phản hồi đầu tiên trước <b className="text-ink-700">{new Date(c.firstResponseDueAt).toLocaleString("vi-VN")}</b>
+            {c.firstResponseAt ? ` (đã phản hồi ${new Date(c.firstResponseAt).toLocaleString("vi-VN")})` : ""} · giải quyết trước <b className="text-ink-700">{new Date(c.dueAt).toLocaleString("vi-VN")}</b>.
+          </p>
+        </div>
+      )}
+      {user?.role !== "ADMIN" && !closed && (
+        <p className="text-xs text-ink-500">
+          {c.assignee ? `Nhân viên ${c.assignee.fullName} đang phụ trách. ` : ""}
+          {c.firstResponseAt ? "GhepGo đã phản hồi; " : "GhepGo sẽ phản hồi "}
+          {c.firstResponseAt ? "dự kiến giải quyết trước" : "trước"} {new Date(c.firstResponseAt ? c.dueAt : c.firstResponseDueAt).toLocaleString("vi-VN")}.
+        </p>
+      )}
 
       <div className="rounded-xl border border-ink-200/70 p-3">
         <RouteLine pickup={c.trip.pickupAddress} dropoff={c.trip.dropoffAddress} />
@@ -161,10 +207,12 @@ export function ComplaintThread({ id, onChanged }: { id: string; onChanged?: () 
 }
 
 /** Shared list row for the complaint inboxes. */
-export function ComplaintRow({ c, selected, onSelect, subtitle }: { c: any; selected: boolean; onSelect: () => void; subtitle: string }) {
+export function ComplaintRow({ c, selected, onSelect, subtitle, extra }: { c: any; selected: boolean; onSelect: () => void; subtitle: string; extra?: React.ReactNode }) {
   const st = COMPLAINT_STATUS[c.status] ?? { label: c.status, tone: "slate" as Tone };
+  const overdue = c.sla?.overdue;
   return (
-    <button onClick={onSelect} className={`w-full text-left px-4 py-3 text-sm transition ${selected ? "bg-brand-50/70" : "hover:bg-ink-50"}`}>
+    <button onClick={onSelect} className={`relative w-full text-left px-4 py-3 text-sm transition ${selected ? "bg-brand-50/70" : "hover:bg-ink-50"}`}>
+      {overdue && <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r bg-red-500" aria-hidden />}
       <div className="flex justify-between gap-2">
         <span className="font-semibold text-ink-900">{CATEGORY_LABEL[c.category] ?? c.category}</span>
         <Badge tone={st.tone}>{st.label}</Badge>
@@ -173,6 +221,7 @@ export function ComplaintRow({ c, selected, onSelect, subtitle }: { c: any; sele
         {c.trip.pickupAddress} → {c.trip.dropoffAddress}
       </p>
       <p className="text-xs text-ink-400 mt-0.5">{subtitle}</p>
+      {extra && <div className="mt-1.5">{extra}</div>}
     </button>
   );
 }

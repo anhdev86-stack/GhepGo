@@ -5,7 +5,9 @@ import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { AuthUser } from '../auth/decorators/current-user.decorator.js';
 import { ComplaintsService, CATEGORY_LABEL } from './complaints.service.js';
-import { AddMessageDto, CreateComplaintDto, ResolveComplaintDto } from './complaints.dto.js';
+import { AddMessageDto, AdminListQueryDto, AssignComplaintDto, CreateComplaintDto, ResolveComplaintDto, SetPriorityDto } from './complaints.dto.js';
+import { ReportQueryDto } from '../fleet/fleet.dto.js';
+import { PRIORITY_LABEL } from './sla.js';
 
 @Controller()
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -39,10 +41,52 @@ export class ComplaintsController {
     return this.complaints.addMessage(id, user.userId, user.role, dto);
   }
 
+  // ---------------- admin ----------------
+
+  /** Filters: status (or ACTIVE), assignee (me | unassigned | id), priority, overdue=1. */
   @Get('admin/complaints')
   @Roles('ADMIN')
-  all(@Query('status') status?: string) {
-    return this.complaints.listAll(status);
+  all(@CurrentUser() user: AuthUser, @Query() q: AdminListQueryDto) {
+    return this.complaints.listAll(q, user.userId);
+  }
+
+  /** Admins with active / overdue load, for the assignment picker. */
+  @Get('admin/complaints/staff')
+  @Roles('ADMIN')
+  staff() {
+    return this.complaints.staff();
+  }
+
+  /** SLA attainment in a window + live backlog + the active policy. */
+  @Get('admin/complaints/sla')
+  @Roles('ADMIN')
+  sla(@Query() q: ReportQueryDto) {
+    return this.complaints.slaReport(q.from, q.to);
+  }
+
+  @Get('admin/complaints/priorities')
+  @Roles('ADMIN')
+  priorities() {
+    return Object.entries(PRIORITY_LABEL).map(([value, label]) => ({ value, label, ...this.complaints.policy[value as keyof typeof PRIORITY_LABEL] }));
+  }
+
+  /** Manual trigger of the overdue sweep (admin / tests). */
+  @Post('admin/complaints/sweep')
+  @Roles('ADMIN')
+  sweep() {
+    return this.complaints.sweepOverdue();
+  }
+
+  @Patch('admin/complaints/:id/assign')
+  @Roles('ADMIN')
+  assign(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: AssignComplaintDto) {
+    return this.complaints.assign(id, user.userId, dto.assigneeId ?? null);
+  }
+
+  @Patch('admin/complaints/:id/priority')
+  @Roles('ADMIN')
+  priority(@Param('id') id: string, @Body() dto: SetPriorityDto) {
+    return this.complaints.setPriority(id, dto.priority);
   }
 
   @Patch('admin/complaints/:id')
