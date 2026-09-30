@@ -231,6 +231,22 @@ export const api = {
     body: { status: "IN_REVIEW" | "RESOLVED" | "REJECTED"; resolution?: string; refundAmount?: number; chargeDriver?: boolean },
   ) => request<any>(`/admin/complaints/${id}`, { method: "PATCH", token, body }),
 
+  // ---- demand forecast ----
+  forecastProfile: (token: string, zoneId?: string, weeks = 8) =>
+    request<any>(`/admin/forecast/profile?weeks=${weeks}${zoneId ? `&zoneId=${zoneId}` : ""}`, { token }),
+  forecast: (token: string, zoneId?: string, horizon = 24, weeks = 8) =>
+    request<any>(`/admin/forecast?horizon=${horizon}&weeks=${weeks}${zoneId ? `&zoneId=${zoneId}` : ""}`, { token }),
+  forecastHotspots: (token: string, opts: { zoneId?: string; at?: string; hours?: number; limit?: number } = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.zoneId) qs.set("zoneId", opts.zoneId);
+    if (opts.at) qs.set("at", opts.at);
+    if (opts.hours) qs.set("hours", String(opts.hours));
+    if (opts.limit) qs.set("limit", String(opts.limit));
+    const q = qs.toString();
+    return request<any>(`/admin/forecast/hotspots${q ? `?${q}` : ""}`, { token });
+  },
+  myHotspots: (token: string, limit = 5) => request<any>(`/drivers/me/hotspots?limit=${limit}`, { token }),
+
   // ---- fleet / reports ----
   rateTrip: (token: string, tripId: string, body: { score: number; comment?: string }) =>
     request(`/trips/${tripId}/rating`, { method: "POST", token, body }),

@@ -149,4 +149,46 @@ describe('Zones, complaints, notifications, reports (e2e)', () => {
     const trip = await t.call('post', '/trips', { token: c.token, body: tripBody(HCM.benThanh, HCM.tanDinh) });
     expect(trip.routePolyline).toBeNull();
   });
+
+  it('forecasts demand by hour-of-week and surfaces pickup hotspots', async () => {
+    const admin = await t.admin();
+    const c = await t.register('CUSTOMER');
+    const d = await t.driverOnDuty();
+    // Same hour-of-week as now, one and two weeks back (minute fixed at :30 so the slot never straddles an hour edge).
+    const base = new Date();
+    base.setMinutes(30, 0, 0);
+    const week = 7 * 86400_000;
+    const mk = (weeksAgo: number, p: { lat: number; lng: number }) => ({
+      customerId: c.user.id,
+      pickupAddress: 'Lịch sử',
+      pickupLat: p.lat,
+      pickupLng: p.lng,
+      dropoffAddress: 'Đích',
+      dropoffLat: HCM.tanSonNhat.lat,
+      dropoffLng: HCM.tanSonNhat.lng,
+      requestedAt: new Date(base.getTime() - weeksAgo * week),
+      status: 'COMPLETED' as const,
+    });
+    await t.prisma.trip.createMany({ data: [mk(1, HCM.benThanh), mk(1, HCM.benThanh), mk(2, HCM.benThanh), mk(1, HCM.langChaCa)] });
+
+    const profile = await t.call('get', '/admin/forecast/profile?weeks=4', { token: admin.token });
+    expect(profile.sampleWeeks).toBeGreaterThanOrEqual(1);
+    expect(profile.demand).toHaveLength(168);
+    const fc = await t.call('get', '/admin/forecast?horizon=3&weeks=4', { token: admin.token });
+    expect(fc.hours).toHaveLength(3);
+    expect(fc.hours[0].demand).toBeGreaterThan(0);
+    expect(fc.summary.expectedRequests).toBeGreaterThan(0);
+    await expectStatus(t.call('get', '/admin/forecast?horizon=999', { token: admin.token }), 400);
+
+    const hs = await t.call('get', `/admin/forecast/hotspots?hours=1&weeks=4&lat=${HCM.benThanh.lat}&lng=${HCM.benThanh.lng}`, { token: admin.token });
+    expect(hs.hotspots.length).toBeGreaterThanOrEqual(1);
+    const top = hs.hotspots[0];
+    expect(Math.abs(top.lat - HCM.benThanh.lat)).toBeLessThan(0.02);
+    expect(top.expectedRequests).toBeGreaterThan(0);
+    expect(typeof top.driversNearby).toBe('number');
+
+    const mine = await t.call('get', '/drivers/me/hotspots', { token: d.token });
+    expect(Array.isArray(mine.hotspots)).toBe(true);
+    await expectStatus(t.call('get', '/drivers/me/hotspots', { token: c.token }), 403);
+  });
 });

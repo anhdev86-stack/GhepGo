@@ -22,6 +22,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { ComplaintsModule } from './complaints/complaints.module.js';
 import { ZonesModule } from './zones/zones.module.js';
 import { DispatchModule } from './dispatch/dispatch.module.js';
+import { ForecastModule } from './forecast/forecast.module.js';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { DispatchModule } from './dispatch/dispatch.module.js';
     TripGroupsModule,
     ComplaintsModule,
     DispatchModule,
+    ForecastModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: AppThrottlerGuard }],

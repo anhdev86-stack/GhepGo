@@ -97,6 +97,13 @@ export const api = {
 
   driverMe: (token: string) => request<any>("/drivers/me", { token }),
 
+  /** Demand hotspots in the driver's zone for the current slot, nearest-first. */
+  myHotspots: (token: string, limit = 3) =>
+    request<{ hotspots: { key: string; lat: number; lng: number; expectedRequests: number; driversNearby: number; undersupplied: boolean; distanceMeters: number | null }[] }>(
+      `/drivers/me/hotspots?limit=${limit}`,
+      { token },
+    ),
+
   /** Road route through ordered waypoints (carpool stops); `polyline` absent when estimated. */
   routePoints: (token: string, points: { lat: number; lng: number }[]) =>
     request<{ distanceMeters: number; durationSecs: number; estimated: boolean; polyline?: string }>(

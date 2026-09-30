@@ -69,6 +69,7 @@ export default function DriverPage() {
   const [model, setModel] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [showVehicleForm, setShowVehicleForm] = useState(false);
+  const [hotspots, setHotspots] = useState<any[]>([]);
 
   const { lastFix, geoError } = useDriverLocationStream(socket, status !== "OFFLINE");
   const tiles = useMapTiles(token);
@@ -81,6 +82,7 @@ export default function DriverPage() {
     api.availableGroups(token).then(setAvailableGroups).catch(() => {});
     api.myGroups(token).then(setMyGroups).catch(() => {});
     api.myDriverStats(token).then(setStats).catch(() => {});
+    api.myHotspots(token, 5).then((r) => setHotspots(r.hotspots ?? [])).catch(() => setHotspots([]));
   }, [token]);
 
   useEffect(() => {
@@ -148,6 +150,15 @@ export default function DriverPage() {
       g.stops.filter((s: any) => s.kind === "PICKUP").map((s: any) => ({ id: `g-${s.id}`, kind: "stop" as const, lat: s.lat, lng: s.lng, label: "G", title: `Nhóm ghép ${g.trips.length} khách · ${s.address}` })),
     ),
   ];
+  // Demand hotspots for the current slot: sized by expected pickups, red when short of drivers.
+  const maxHot = Math.max(0.01, ...hotspots.map((h) => h.expectedRequests));
+  const hotspotCircles = hotspots.map((h) => ({
+    id: h.key,
+    center: { lat: h.lat, lng: h.lng },
+    radiusMeters: 250 + 450 * Math.sqrt(h.expectedRequests / maxHot),
+    color: h.undersupplied ? "#dc2626" : "#f59e0b",
+    title: `Điểm đông khách · ${h.expectedRequests} yêu cầu/giờ · ${h.driversNearby} tài xế gần`,
+  }));
   const online = status !== "OFFLINE";
   const busyWith = myGroups[0] ? "group" : activeTrips[0] ? "trip" : null;
 
@@ -207,11 +218,33 @@ export default function DriverPage() {
               ) : busyWith === "trip" ? (
                 <TripMap token={token} trip={activeTrips[0]} myLocation={myLocation} height={340} />
               ) : (
-                <MapView tiles={tiles} markers={idleMarkers} center={myLocation ?? undefined} fitKey={`${available.length}:${availableGroups.length}`} height={340} />
+                <MapView tiles={tiles} markers={idleMarkers} circles={hotspotCircles} center={myLocation ?? undefined} fitKey={`${available.length}:${availableGroups.length}:${hotspots.length}`} height={340} />
               )}
             </div>
-            <p className="px-5 pb-4 text-[11px] text-ink-500">Tím: bạn · A/B: đón/trả · số: thứ tự điểm dừng · &quot;!&quot; bao xe đang chờ · &quot;G&quot; nhóm ghép đang chờ</p>
+            <p className="px-5 pb-4 text-[11px] text-ink-500">Tím: bạn · A/B: đón/trả · số: thứ tự điểm dừng · &quot;!&quot; bao xe đang chờ · &quot;G&quot; nhóm ghép đang chờ · vòng cam/đỏ: điểm đông khách giờ này</p>
           </Card>
+
+          {!busyWith && hotspots.length > 0 && (
+            <Card>
+              <CardTitle description="Nơi thường có nhiều yêu cầu vào giờ này, xếp theo gần bạn. Đỏ là đang thiếu xe.">Điểm đông khách giờ này</CardTitle>
+              <ol className="divide-y divide-ink-100 text-sm">
+                {hotspots.map((h, i) => (
+                  <li key={h.key} className="py-2.5 flex items-center gap-3">
+                    <span className={`h-7 w-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${h.undersupplied ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800"}`}>{i + 1}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-ink-900">
+                        {h.distanceMeters != null ? `${(h.distanceMeters / 1000).toFixed(1)} km từ bạn` : "Vị trí chưa rõ"} · {h.expectedRequests} yêu cầu/giờ
+                      </span>
+                      <span className="text-xs text-ink-500">{h.driversNearby} tài xế đang trực trong 1 km</span>
+                    </span>
+                    <a className="link text-xs whitespace-nowrap" href={`https://www.google.com/maps/dir/?api=1&destination=${h.lat},${h.lng}`} target="_blank" rel="noreferrer">
+                      Chỉ đường
+                    </a>
+                  </li>
+                ))}
+              </ol>
+            </Card>
+          )}
 
           {myGroups.map((g) => {
             const nextStop = g.stops[g.currentStopIndex];
