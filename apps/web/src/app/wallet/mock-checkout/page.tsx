@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
+import { Alert, Button, Card, LogoMark } from "@/components/ui";
 
 /**
  * Stand-in for the VNPay/Momo hosted checkout page. It asks the API to sign
@@ -37,20 +38,26 @@ function MockCheckout() {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg border max-w-md mx-auto text-center">
-      <p className="text-xs uppercase tracking-wide text-slate-400 mb-2">Cổng thanh toán giả lập</p>
-      <h1 className="text-lg font-semibold">Nạp ví GhepGo</h1>
-      <p className="text-3xl font-semibold my-4">{amount.toLocaleString("vi-VN")} đ</p>
-      <p className="text-xs text-slate-500 mb-4">Mã giao dịch: {txId}</p>
-      {error && <p className="text-red-600 text-sm mb-2">{error}</p>}
-      <div className="flex gap-2 justify-center">
-        <button onClick={() => finish("SUCCESS")} disabled={busy} className="bg-green-600 text-white rounded px-4 py-2 disabled:opacity-50">
-          Thanh toán thành công
-        </button>
-        <button onClick={() => finish("FAILED")} disabled={busy} className="bg-slate-500 text-white rounded px-4 py-2 disabled:opacity-50">
-          Giả lập thất bại
-        </button>
-      </div>
+    <div className="max-w-md mx-auto">
+      <Card className="text-center">
+        <p className="text-xs uppercase tracking-wider text-ink-400">Cổng thanh toán giả lập</p>
+        <div className="mt-4 flex justify-center">
+          <LogoMark size={44} />
+        </div>
+        <h1 className="mt-3 text-lg font-semibold text-ink-900">Nạp ví GhepGo</h1>
+        <p className="text-4xl font-bold tracking-tight text-ink-900 my-4">{amount.toLocaleString("vi-VN")} đ</p>
+        <p className="text-xs text-ink-500 font-mono">Mã giao dịch: {txId}</p>
+        {error && <Alert className="mt-3">{error}</Alert>}
+        <div className="mt-6 grid gap-2">
+          <Button size="lg" onClick={() => finish("SUCCESS")} loading={busy}>
+            Thanh toán thành công
+          </Button>
+          <Button size="lg" variant="secondary" onClick={() => finish("FAILED")} disabled={busy}>
+            Giả lập thất bại
+          </Button>
+        </div>
+        <p className="mt-4 text-xs text-ink-400">Trang này chỉ tồn tại ở môi trường phát triển. VNPay/MoMo gọi IPN server-to-server.</p>
+      </Card>
     </div>
   );
 }

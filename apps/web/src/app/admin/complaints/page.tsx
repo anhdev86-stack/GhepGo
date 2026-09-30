@@ -4,7 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api } from "@/lib/api";
-import { CATEGORY_LABEL, COMPLAINT_STATUS, ComplaintThread } from "@/components/complaint-thread";
+import { ComplaintRow, ComplaintThread } from "@/components/complaint-thread";
+import { Card, EmptyState, PageHeader, Select } from "@/components/ui";
 
 export default function AdminComplaintsPage() {
   const { token, user, isLoading } = useAuth();
@@ -28,37 +29,35 @@ export default function AdminComplaintsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Khiếu nại ({items.length})</h1>
-        <select className="border rounded px-2 py-1 text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
-          <option value="">Tất cả</option>
-          <option value="OPEN">Mới</option>
-          <option value="IN_REVIEW">Đang xử lý</option>
-          <option value="RESOLVED">Đã giải quyết</option>
-          <option value="REJECTED">Từ chối</option>
-        </select>
-      </div>
-      <div className="grid md:grid-cols-[1fr_1.4fr] gap-4">
-        <div className="bg-white rounded-lg border divide-y max-h-[70vh] overflow-auto">
-          {items.length === 0 && <p className="p-4 text-sm text-slate-500">Không có khiếu nại.</p>}
+    <div>
+      <PageHeader
+        eyebrow="Quản trị"
+        title={`Khiếu nại (${items.length})`}
+        description="Trả lời, kết luận và hoàn tiền ngay trong luồng trao đổi."
+        action={
+          <Select className="py-1.5 w-44" value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="">Tất cả</option>
+            <option value="OPEN">Mới</option>
+            <option value="IN_REVIEW">Đang xử lý</option>
+            <option value="RESOLVED">Đã giải quyết</option>
+            <option value="REJECTED">Từ chối</option>
+          </Select>
+        }
+      />
+      <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-5 items-start">
+        <Card padded={false} className="divide-y divide-ink-100 overflow-hidden max-h-[75vh] overflow-y-auto">
+          {items.length === 0 && <EmptyState title="Không có khiếu nại" />}
           {items.map((c) => (
-            <button key={c.id} onClick={() => setSelected(c.id)} className={`w-full text-left p-3 text-sm hover:bg-slate-50 ${selected === c.id ? "bg-slate-50" : ""}`}>
-              <div className="flex justify-between gap-2">
-                <span className="font-medium">{CATEGORY_LABEL[c.category] ?? c.category}</span>
-                <span className={`text-xs px-2 py-0.5 rounded-full ${COMPLAINT_STATUS[c.status]?.cls}`}>{COMPLAINT_STATUS[c.status]?.label}</span>
-              </div>
-              <p className="text-slate-600 truncate">{c.trip.pickupAddress} → {c.trip.dropoffAddress}</p>
-              <p className="text-xs text-slate-400">
-                {c.reporter.fullName} ({c.reporter.role === "DRIVER" ? "tài xế" : "khách"}) · {c.reporter.phone}
-                {c.againstUser ? ` → ${c.againstUser.fullName}` : ""} · {new Date(c.createdAt).toLocaleString("vi-VN")}
-              </p>
-            </button>
+            <ComplaintRow
+              key={c.id}
+              c={c}
+              selected={selected === c.id}
+              onSelect={() => setSelected(c.id)}
+              subtitle={`${c.reporter.fullName} (${c.reporter.role === "DRIVER" ? "tài xế" : "khách"}) · ${c.reporter.phone}${c.againstUser ? ` → ${c.againstUser.fullName}` : ""} · ${new Date(c.createdAt).toLocaleString("vi-VN")}`}
+            />
           ))}
-        </div>
-        <div className="bg-white rounded-lg border p-4">
-          {selected ? <ComplaintThread id={selected} onChanged={load} /> : <p className="text-sm text-slate-500">Chọn một khiếu nại để xử lý.</p>}
-        </div>
+        </Card>
+        <Card>{selected ? <ComplaintThread id={selected} onChanged={load} /> : <EmptyState title="Chọn một khiếu nại để xử lý" />}</Card>
       </div>
     </div>
   );

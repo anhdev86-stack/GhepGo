@@ -35,6 +35,23 @@ export class GoongProvider implements GeoProvider {
     return places.filter((p): p is GeoPlace => !!p);
   }
 
+  async reverse(lat: number, lng: number): Promise<GeoPlace | null> {
+    const params = new URLSearchParams({ api_key: this.apiKey, latlng: `${lat},${lng}` });
+    const res = await fetch(`${this.base}/Geocode?${params}`);
+    if (!res.ok) return null;
+    const data = (await res.json()) as {
+      results?: { formatted_address: string; name?: string; geometry?: { location?: { lat: number; lng: number } } }[];
+    };
+    const r = data.results?.[0];
+    if (!r) return null;
+    return {
+      label: r.name ?? r.formatted_address.split(',')[0],
+      address: r.formatted_address,
+      lat: r.geometry?.location?.lat ?? lat,
+      lng: r.geometry?.location?.lng ?? lng,
+    };
+  }
+
   async route(points: { lat: number; lng: number }[]): Promise<GeoRoute | null> {
     if (points.length < 2) return null;
     const origin = `${points[0].lat},${points[0].lng}`;

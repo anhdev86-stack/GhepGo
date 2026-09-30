@@ -139,7 +139,7 @@ export class DriversService {
 
   async findAll() {
     const drivers = await this.prisma.driver.findMany({
-      include: { user: true, vehicles: true },
+      include: { user: true, vehicles: true, zone: { select: { id: true, name: true } } },
     });
     // Overlay live Redis position when available.
     return Promise.all(

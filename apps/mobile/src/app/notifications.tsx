@@ -66,11 +66,11 @@ export default function NotificationsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 16, gap: 8, backgroundColor: "#f8fafc", flexGrow: 1 },
-  card: { backgroundColor: "#fff", borderRadius: 10, borderWidth: 1, borderColor: "#e2e8f0", padding: 12, marginBottom: 8, gap: 2 },
-  unread: { borderColor: "#93c5fd", backgroundColor: "#eff6ff" },
+  container: { padding: 16, gap: 8, backgroundColor: "#f6f7fb", flexGrow: 1 },
+  card: { backgroundColor: "#fff", borderRadius: 16, borderWidth: 1, borderColor: "#d9dde8", padding: 12, marginBottom: 8, gap: 2 },
+  unread: { borderColor: "#93c5fd", backgroundColor: "#effcf8" },
   title: { fontWeight: "600" },
-  body: { color: "#334155", fontSize: 13 },
-  muted: { color: "#64748b", fontSize: 12 },
-  link: { color: "#2563eb", textAlign: "right", marginBottom: 8 },
+  body: { color: "#3c4461", fontSize: 13 },
+  muted: { color: "#667092", fontSize: 12 },
+  link: { color: "#0b8c75", textAlign: "right", marginBottom: 8 },
 });

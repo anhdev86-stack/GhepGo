@@ -18,7 +18,7 @@ export default function RootLayout() {
       <AuthProvider>
         <PushRegistrar />
         <StatusBar style="auto" />
-        <Stack screenOptions={{ headerStyle: { backgroundColor: "#2563eb" }, headerTintColor: "#fff" }}>
+        <Stack screenOptions={{ headerStyle: { backgroundColor: "#0b8c75" }, headerTintColor: "#fff" }}>
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ title: "Đăng nhập" }} />
           <Stack.Screen name="home" options={{ title: "GhepGo Tài xế" }} />

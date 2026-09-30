@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { api, ApiError } from "../lib/api";
+import { colors } from "../theme";
 import { useAuth } from "../contexts/auth-context";
 
 export default function LoginScreen() {
@@ -116,8 +117,19 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+      <View style={styles.brand}>
+        <View style={styles.logoMark}>
+          <Text style={styles.logoMarkText}>G</Text>
+        </View>
+        <Text style={styles.logoText}>
+          Ghep<Text style={{ color: colors.brand }}>Go</Text> <Text style={styles.logoSuffix}>Tài xế</Text>
+        </Text>
+      </View>
       <Text style={styles.title}>
-        {mode === "login" ? "Đăng nhập tài xế" : mode === "register" ? "Đăng ký tài xế" : "Quên mật khẩu"}
+        {mode === "login" ? "Chào mừng trở lại" : mode === "register" ? "Đăng ký tài xế" : "Khôi phục mật khẩu"}
+      </Text>
+      <Text style={styles.subtitle}>
+        {mode === "login" ? "Đăng nhập để bắt đầu nhận chuyến." : mode === "register" ? "Xác thực số điện thoại qua SMS, chỉ mất một phút." : "Nhập số điện thoại đã đăng ký để nhận mã xác thực."}
       </Text>
 
       {step === "otp" ? (
@@ -137,7 +149,7 @@ export default function LoginScreen() {
             <Text style={styles.buttonText}>{loading ? "Đang kiểm tra..." : "Xác nhận"}</Text>
           </Pressable>
           <Pressable onPress={sendCode} disabled={loading || cooldown > 0}>
-            <Text style={[styles.switchText, cooldown > 0 && { color: "#94a3b8" }]}>
+            <Text style={[styles.switchText, cooldown > 0 && { color: "#8d97b0" }]}>
               {cooldown > 0 ? `Gửi lại sau ${cooldown}s` : "Gửi lại mã"}
             </Text>
           </Pressable>
@@ -190,7 +202,7 @@ export default function LoginScreen() {
           )}
           {mode === "login" && (
             <Pressable onPress={() => switchMode("forgot")}>
-              <Text style={[styles.switchText, { color: "#64748b" }]}>Quên mật khẩu?</Text>
+              <Text style={[styles.switchText, { color: "#667092" }]}>Quên mật khẩu?</Text>
             </Pressable>
           )}
         </>
@@ -200,6 +212,12 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
+  brand: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 20 },
+  logoMark: { width: 40, height: 40, borderRadius: 12, backgroundColor: colors.brand, alignItems: "center", justifyContent: "center" },
+  logoMarkText: { color: "#fff", fontWeight: "800", fontSize: 20 },
+  logoText: { fontSize: 20, fontWeight: "800", color: colors.ink },
+  logoSuffix: { fontWeight: "500", color: colors.inkMuted, fontSize: 16 },
+  subtitle: { color: colors.inkMuted, marginBottom: 16, marginTop: -6 },
   container: {
     flex: 1,
     justifyContent: "center",
@@ -211,12 +229,12 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "600",
     marginBottom: 12,
-    textAlign: "center",
+    textAlign: "left",
   },
   input: {
     borderWidth: 1,
-    borderColor: "#cbd5e1",
-    borderRadius: 8,
+    borderColor: "#d9dde8",
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
@@ -225,8 +243,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   button: {
-    backgroundColor: "#2563eb",
-    borderRadius: 8,
+    backgroundColor: "#0b8c75",
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: "center",
     marginTop: 8,
@@ -236,12 +254,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   switchText: {
-    color: "#2563eb",
+    color: "#0b8c75",
     textAlign: "center",
     marginTop: 8,
   },
   hint: {
-    color: "#475569",
+    color: "#4d5678",
     fontSize: 13,
     textAlign: "center",
   },
@@ -249,7 +267,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fefce8",
     borderColor: "#fde68a",
     borderWidth: 1,
-    borderRadius: 6,
+    borderRadius: 10,
     padding: 8,
     fontSize: 12,
     textAlign: "center",

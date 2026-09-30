@@ -210,6 +210,8 @@ model Trip {
 
   distanceMeters Int?
   durationSecs   Int?
+  /** Encoded polyline5 of the road route (null when the provider fell back to a straight line). */
+  routePolyline  String?
   fare           Decimal    @default(0) @db.Decimal(10, 2)
 
   requestedAt    DateTime   @default(now())

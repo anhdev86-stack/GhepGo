@@ -9,3 +9,6 @@ build/
 .turbo/
 .DS_Store
 apps/api/generated/
+
+# TypeScript incremental build state
+*.tsbuildinfo

@@ -49,6 +49,15 @@ async function request<T>(
 }
 
 export type Gateway = "vnpay" | "momo" | "mock";
+
+export interface RouteResult {
+  distanceMeters: number;
+  durationSecs: number;
+  /** True when the map provider was unavailable and the distance is a straight-line estimate. */
+  estimated: boolean;
+  /** Encoded polyline5 of the road geometry (absent when estimated). */
+  polyline?: string;
+}
 export type OtpPurpose = "REGISTER" | "RESET_PASSWORD";
 
 export interface AuthResponse {
@@ -139,10 +148,17 @@ export const api = {
       { token },
     ),
   route: (token: string, from: { lat: number; lng: number }, to: { lat: number; lng: number }) =>
-    request<{ distanceMeters: number; durationSecs: number; estimated: boolean }>(
-      `/geo/route?fromLat=${from.lat}&fromLng=${from.lng}&toLat=${to.lat}&toLng=${to.lng}`,
-      { token },
-    ),
+    request<RouteResult>(`/geo/route?fromLat=${from.lat}&fromLng=${from.lng}&toLat=${to.lat}&toLng=${to.lng}`, { token }),
+  /** Road route through ordered waypoints (carpool stops). */
+  routePoints: (token: string, points: { lat: number; lng: number }[]) =>
+    request<RouteResult>(`/geo/route?points=${points.map((p) => `${p.lat},${p.lng}`).join(";")}`, { token }),
+  reverseGeocode: (token: string, p: { lat: number; lng: number }) =>
+    request<{ place: { label: string; address: string; lat: number; lng: number } | null }>(`/geo/reverse?lat=${p.lat}&lng=${p.lng}`, { token }),
+  geoConfig: (token: string) =>
+    request<{ provider: string; tiles: { url: string; attribution: string; maxZoom: number } }>("/geo/provider", { token }),
+  /** Active service zones with polygons — any signed-in user. */
+  publicZones: (token: string) =>
+    request<{ id: string; name: string; centerLat: number; centerLng: number; radiusKm: number; polygon: { type: "Polygon"; coordinates: [number, number][][] } | null; areaKm2: number | null }[]>("/zones", { token }),
 
   // ---- wallet ----
   wallet: (token: string) => request<any>("/wallet/me", { token }),

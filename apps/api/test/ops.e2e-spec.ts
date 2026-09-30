@@ -94,4 +94,22 @@ describe('Zones, complaints, notifications, reports (e2e)', () => {
     const ov = await t.call('get', '/admin/reports/overview', { token: admin.token });
     expect(ov.revenue.grossFare).toBeGreaterThan(0);
   });
+
+  it('serves map config, multi-point routes and reverse geocoding (offline fallback)', async () => {
+    const c = await t.register('CUSTOMER');
+    const cfg = await t.call('get', '/geo/provider', { token: c.token });
+    expect(cfg.provider).toBe('osm');
+    expect(cfg.tiles.url).toContain('{z}');
+    // Provider is unreachable in tests → straight-line estimate, no polyline.
+    const pts = [HCM.benThanh, HCM.nhaTho, HCM.tanDinh].map((p) => `${p.lat},${p.lng}`).join(';');
+    const r = await t.call('get', `/geo/route?points=${pts}`, { token: c.token });
+    expect(r.estimated).toBe(true);
+    expect(r.distanceMeters).toBeGreaterThan(1000);
+    expect(r.polyline).toBeUndefined();
+    await expectStatus(t.call('get', '/geo/route?points=10.7,106.6', { token: c.token }), 400);
+    await expectStatus(t.call('get', '/geo/route', { token: c.token }), 400);
+    expect((await t.call('get', `/geo/reverse?lat=${HCM.benThanh.lat}&lng=${HCM.benThanh.lng}`, { token: c.token })).place).toBeNull();
+    const trip = await t.call('post', '/trips', { token: c.token, body: tripBody(HCM.benThanh, HCM.tanDinh) });
+    expect(trip.routePolyline).toBeNull();
+  });
 });

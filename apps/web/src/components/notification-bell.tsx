@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/auth-context";
 import { api } from "@/lib/api";
 import { useRealtime, useSocketEvent, WS } from "@/lib/realtime";
 import { useWebPush } from "@/lib/push";
+import { Icon } from "@/components/ui";
 
 interface Notif {
   id: string;
@@ -25,12 +26,21 @@ const linkFor = (n: Notif, role: string) => {
   return "/trips";
 };
 
-export function NotificationBell() {
+const timeAgo = (iso: string) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "vừa xong";
+  if (s < 3600) return `${Math.floor(s / 60)} phút trước`;
+  if (s < 86400) return `${Math.floor(s / 3600)} giờ trước`;
+  return new Date(iso).toLocaleDateString("vi-VN");
+};
+
+export function NotificationBell({ dark = false }: { dark?: boolean }) {
   const { token, user } = useAuth();
   const { socket } = useRealtime(token);
   const { state: pushState, enable } = useWebPush(token);
   const [items, setItems] = useState<Notif[]>([]);
   const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
     if (!token) return;
@@ -40,6 +50,15 @@ export function NotificationBell() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open]);
 
   useSocketEvent<Notif>(socket, WS.NOTIFICATION, (n) => setItems((prev) => [{ ...n, readAt: null }, ...prev].slice(0, 50)));
 
@@ -53,33 +72,39 @@ export function NotificationBell() {
   };
 
   return (
-    <div className="relative">
-      <button onClick={() => setOpen((o) => !o)} className="relative px-1" aria-label="Thông báo">
-        <span className="text-lg">🔔</span>
+    <div className="relative" ref={wrap}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`relative btn btn-sm ${dark ? "text-white hover:bg-white/10" : "btn-ghost"}`}
+        aria-label="Thông báo"
+      >
+        <Icon.bell className="h-5 w-5" />
         {unread > 0 && (
-          <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] rounded-full px-1.5 min-w-[18px] text-center">
+          <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center ring-2 ring-white">
             {unread > 9 ? "9+" : unread}
           </span>
         )}
       </button>
       {open && (
-        <div className="absolute right-0 mt-2 w-80 bg-white border rounded-lg shadow-lg z-20 text-sm">
-          <div className="flex justify-between items-center px-3 py-2 border-b">
-            <span className="font-medium">Thông báo</span>
+        <div className="absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] card p-0 shadow-[var(--shadow-float)] z-50 text-sm overflow-hidden fade-up">
+          <div className="flex justify-between items-center px-4 py-3 border-b border-ink-100">
+            <span className="font-semibold text-ink-900">Thông báo</span>
             {unread > 0 && (
-              <button onClick={markAll} className="text-xs text-blue-600 underline">Đánh dấu đã đọc</button>
+              <button onClick={markAll} className="link text-xs">
+                Đánh dấu đã đọc
+              </button>
             )}
           </div>
           {pushState === "prompt" && (
-            <button onClick={enable} className="w-full text-left px-3 py-2 bg-blue-50 text-blue-700 text-xs border-b">
+            <button onClick={enable} className="w-full text-left px-4 py-2.5 bg-brand-50 text-brand-800 text-xs font-medium border-b border-brand-100 hover:bg-brand-100">
               Bật thông báo đẩy trên trình duyệt này
             </button>
           )}
-          {pushState === "denied" && <p className="px-3 py-2 text-xs text-slate-500 border-b">Trình duyệt đang chặn thông báo.</p>}
-          <ul className="max-h-80 overflow-auto divide-y">
-            {items.length === 0 && <li className="px-3 py-3 text-slate-500">Chưa có thông báo.</li>}
+          {pushState === "denied" && <p className="px-4 py-2 text-xs text-ink-500 border-b border-ink-100">Trình duyệt đang chặn thông báo.</p>}
+          <ul className="max-h-96 overflow-auto divide-y divide-ink-100">
+            {items.length === 0 && <li className="px-4 py-8 text-center text-ink-500">Chưa có thông báo.</li>}
             {items.map((n) => (
-              <li key={n.id} className={n.readAt ? "" : "bg-slate-50"}>
+              <li key={n.id} className={n.readAt ? "" : "bg-brand-50/40"}>
                 <Link
                   href={linkFor(n, user.role)}
                   onClick={() => {
@@ -89,11 +114,14 @@ export function NotificationBell() {
                       setItems((prev) => prev.map((x) => (x.id === n.id ? { ...x, readAt: new Date().toISOString() } : x)));
                     }
                   }}
-                  className="block px-3 py-2 hover:bg-slate-100"
+                  className="flex gap-3 px-4 py-3 hover:bg-ink-50"
                 >
-                  <p className="font-medium">{n.title}</p>
-                  <p className="text-slate-600 text-xs">{n.body}</p>
-                  <p className="text-slate-400 text-[10px] mt-0.5">{new Date(n.createdAt).toLocaleString("vi-VN")}</p>
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${n.readAt ? "bg-transparent" : "bg-brand-500"}`} />
+                  <span className="min-w-0">
+                    <p className="font-medium text-ink-900">{n.title}</p>
+                    <p className="text-ink-600 text-xs mt-0.5">{n.body}</p>
+                    <p className="text-ink-400 text-[11px] mt-1">{timeAgo(n.createdAt)}</p>
+                  </span>
                 </Link>
               </li>
             ))}
