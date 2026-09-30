@@ -1,11 +1,11 @@
-import { TestApp, expectStatus } from './helpers.js';
+import { TestApp, expectStatus, uniquePhone } from './helpers.js';
 
 describe('Auth + OTP (e2e)', () => {
   const t = new TestApp();
   beforeAll(() => t.start());
   afterAll(() => t.stop());
 
-  const phone = () => `09${(Date.now() + Math.floor(Math.random() * 1_000_000)).toString().slice(-8)}`;
+  const phone = uniquePhone;
 
   it('requires OTP to register and validates phone numbers', async () => {
     await expectStatus(t.call('post', '/auth/register', { body: { phone: phone(), password: 'secret123', fullName: 'x', role: 'CUSTOMER' } }), 400, 'OTP');
