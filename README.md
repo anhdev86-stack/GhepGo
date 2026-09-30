@@ -78,7 +78,9 @@ API chạy tại `http://localhost:3001/api`.
 - **Drivers**: `PATCH /drivers/me/status` (AVAILABLE/OFFLINE), `PATCH /drivers/me/location`
   (fallback HTTP cho GPS), `GET /drivers/nearby?lat&lng&radius` (tài xế đang trực quanh một điểm,
   Redis GEO), `GET /drivers` (admin, kèm vị trí live).
-- **Trips**: `POST /trips` (đặt xe, tự tính khoảng cách/giá bằng công thức Haversine),
+- **Trips**: `POST /trips` (đặt xe; quãng đường từ routing, giá từ bảng giá khu vực + cao điểm + `promoCode`),
+  `GET /trips/mine?scope=all|active|history&take=1..100&cursor=<id>` (mới nhất trước, mặc định 50; web tải chuyến đang chạy
+  đầy đủ và lịch sử 20 chuyến mỗi trang),
   `GET /trips/mine`, `GET /trips/available`, `GET /trips/driver/mine`,
   `POST /trips/:id/accept` (atomic — 2 tài xế bấm cùng lúc chỉ 1 người nhận được),
   `PATCH /trips/:id/status`, `POST /trips/:id/cancel` (khách huỷ trước khi được đón),
@@ -137,6 +139,25 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 - API: `GET /zones` (đang hoạt động), `GET /zones/coverage?lat&lng` (điểm có được phục vụ không),
   admin `POST/PATCH/DELETE /admin/zones[/:id]` (không xoá khi còn tài xế), `GET /admin/reports/zones?from&to`.
   Web: màn đặt xe báo vùng phục vụ và chặn nút đặt; bảng tài xế hiển thị khu vực; `/admin/reports` quản lý và thống kê theo khu vực.
+
+### Bảng giá, giờ cao điểm & khuyến mãi (`src/pricing`)
+
+- **Bảng giá** (`pricing_rules`): một dòng mặc định (zoneId null) và tuỳ chọn một dòng riêng cho mỗi khu vực; chưa có dòng nào thì
+  dùng hằng số hệ thống (mở cửa 15.000, 11.000/km, tối thiểu 20.000, xe ghép giảm 25%). Công thức theo thứ tự trên hoá đơn:
+  mở cửa + km + phút → phụ thu đêm % (khung giờ cấu hình, có thể qua nửa đêm) → hệ số giờ cao điểm → giảm xe ghép (+ phụ phí
+  đi vòng theo km) → giá tối thiểu → khuyến mãi → làm tròn (`roundTo`). `pricing.util.ts` thuần, có unit test.
+- **Giờ cao điểm** tính trực tiếp từ cung–cầu trong khu vực: yêu cầu đang chờ (bao xe REQUESTED + nhóm MATCHING) so với tài xế
+  đang trực; tỷ lệ ≤ 0,5 là ×1, mỗi đơn vị tỷ lệ tăng thêm ×0,2 (bước 0,1) tới `surgeMax`; không có tài xế thì ×tối đa. Cache 60 s.
+  Hệ số và từng khoản được lưu vào chuyến (`surgeMultiplier`, `fareBreakdown`).
+- **Khuyến mãi** (`promotions`): PERCENT/FIXED, giảm tối đa, đơn tối thiểu, loại chuyến, chỉ chuyến đầu, thời gian, tổng lượt và
+  lượt/khách; `POST /trips {promoCode}` từ chối 400 khi không áp dụng được, lượt dùng ghi trong cùng transaction tạo chuyến
+  (`promotion_redemptions`), huỷ hoặc hết hạn chuyến trả lại lượt. **Phí huỷ muộn**: khách huỷ sau khi tài xế đã nhận bị trừ
+  `cancellationFee` vào ví (được phép âm), tài xế nhận phần còn lại sau hoa hồng.
+- API: `GET /pricing/quote?fromLat&fromLng&toLat&toLng&tripType&promoCode` (tuyến + chi tiết giá + cao điểm + kiểm tra mã, cùng
+  engine với đặt xe), `GET /pricing/rules/current?lat&lng`; admin `GET/POST/PATCH/DELETE /admin/pricing/rules[/:id]`,
+  `GET /admin/pricing/surge`, `GET/POST/PATCH /admin/promotions[/:id]`, `GET /admin/promotions/:id/redemptions`.
+- Web: `/book` báo giá từ quote (huy hiệu cao điểm/đêm/xe ghép, ô nhập mã, chi tiết giá); `/admin/pricing` quản lý bảng giá theo
+  khu vực, xem hệ số cao điểm hiện tại, tạo/tắt mã và xem lượt dùng.
 
 ### Dự báo nhu cầu (`src/forecast`)
 
@@ -289,6 +310,40 @@ khi app không ở foreground (mở app thì socket đảm nhiệm để tránh 
 "Luôn cho phép"; app hiển thị trạng thái GPS nền và lý do nếu thiếu quyền. Yêu cầu **development build**
 (`npx expo run:android` / `run:ios` hoặc EAS) — Expo Go không hỗ trợ background location.
 
+## Chạy thử trên máy với dữ liệu demo
+
+Cần Node.js ≥ 20, pnpm và Docker Desktop. Từ thư mục gốc repo:
+
+```bash
+pnpm install
+docker compose up -d                      # PostgreSQL/PostGIS :5434 + Redis :6379
+cp apps/api/.env.example apps/api/.env
+pnpm --filter api exec prisma generate
+pnpm --filter api exec prisma migrate deploy
+pnpm demo:seed                            # một lần, trên database trống
+
+# 3 terminal riêng:
+pnpm dev:api                              # http://localhost:3001/api
+pnpm dev:web                              # http://localhost:3000
+pnpm demo:drivers                         # giữ 5 tài xế demo "đang trực" (GPS mỗi phút), Ctrl+C để dừng
+```
+
+`demo:seed` chạy qua chính các service của API (bảng giá, khuyến mãi, vòng đời chuyến, khiếu nại) nên số liệu giống
+khi dùng thật: 12 khách, 5 tài xế có xe, khu vực TP.HCM + Quận 1 (đa giác), bảng giá mặc định và bảng riêng Quận 1,
+mã `HELLO20` / `GHEPXE15` / `SANBAY`, 8 chuyến hoàn thành, 1 chuyến đang chạy, 6 yêu cầu đang chờ (tạo giá giờ cao điểm),
+2 khiếu nại và ~2.600 chuyến lịch sử 4 tuần có giờ cao điểm cho trang dự báo và báo cáo. Chạy lại khi đã có dữ liệu
+thì lệnh bỏ qua; muốn làm lại từ đầu: `docker compose down -v` rồi chạy lại các bước trên.
+
+| Vai trò | Số điện thoại | Mật khẩu | Nên xem |
+|---|---|---|---|
+| Admin | `0900000001` | `demo1234` | `/admin`, `/admin/pricing`, `/admin/forecast`, `/admin/complaints`, `/admin/reports` |
+| Khách | `0900000002` | `demo1234` | `/trips` (có chuyến đang chạy, lịch sử dài để thử "Xem thêm") |
+| Khách | `0900000004` | `demo1234` | `/book` với mã `HELLO20` |
+| Tài xế | `0900000021` | `demo1234` | `/driver` (đang chạy chuyến, có yêu cầu chờ nhận) |
+
+Tài xế chỉ được tính "đang trực" trong 2 phút sau lần gửi GPS cuối, nên nếu không chạy `demo:drivers` thì trang đặt xe
+sẽ báo chưa có tài xế gần. Lệnh demo từ chối chạy khi `NODE_ENV=production`.
+
 ## Luồng demo end-to-end
 
 1. Đăng ký 1 tài khoản `CUSTOMER` và 1 tài khoản `DRIVER` (web `/login` hoặc mobile).
@@ -302,7 +357,7 @@ khi app không ở foreground (mở app thì socket đảm nhiệm để tránh 
 
 ```bash
 cd apps/api
-pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, điểm tuyến geo, SLA, dự báo, health
+pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, điểm tuyến geo, SLA, dự báo, giá cước, health
 pnpm test:e2e      # e2e (vitest + supertest + socket.io-client) trên Postgres + Redis thật: 17 kịch bản
 pnpm build
 ```
@@ -311,7 +366,7 @@ E2E (`apps/api/test/*.e2e-spec.ts`) khởi động toàn bộ AppModule trên c�
 OTP/đăng ký/refresh/logout/khoá đăng nhập, ghép nhóm + ghép động + huỷ + race nhận chuyến + sự kiện socket,
 ví/hoa hồng/fallback tiền mặt/rút tiền/IPN VNPay và MoMo, khu vực (tròn + đa giác), khiếu nại + hoàn tiền,
 push device, đánh giá, KPI, hết hạn chuyến, cấu hình bản đồ/tuyến nhiều điểm/reverse geocode, SLA khiếu nại
-(tự phân công, đổi người xử lý/ưu tiên, quét quá hạn, báo cáo SLA), dự báo nhu cầu (profile, 24 giờ tới, điểm nóng). Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
+(tự phân công, đổi người xử lý/ưu tiên, quét quá hạn, báo cáo SLA), dự báo nhu cầu (profile, 24 giờ tới, điểm nóng), bảng giá + mã khuyến mãi + phí huỷ muộn. Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
 không mạng). CI chạy cả unit lẫn e2e.
 
 ## CI/CD và triển khai

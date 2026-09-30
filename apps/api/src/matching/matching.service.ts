@@ -3,7 +3,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import { CreateTripDto } from '../trips/dto/create-trip.dto.js';
-import { estimateDurationSecs, estimateFare, haversineDistanceMeters, PER_KM_VND } from '../common/geo.util.js';
+import { estimateDurationSecs, haversineDistanceMeters } from '../common/geo.util.js';
+import { PricingService, type PriceResult } from '../pricing/pricing.service.js';
 import { orderStops, totalRouteDistanceMeters, type LatLng, type RouteStop } from '../common/route.util.js';
 import {
   DETOUR_RATIO,
@@ -12,7 +13,6 @@ import {
   MAX_STOPS_PER_GROUP,
   MIN_DETOUR_CAP_METERS,
   PICKUP_CLUSTER_METERS,
-  SHARED_DISCOUNT,
   SHARED_MAX_SEATS,
 } from './matching.constants.js';
 
@@ -46,7 +46,9 @@ interface TripCtx {
   seatsRequested: number;
   directDistanceMeters: number;
   durationSecs: number;
-  directFare: number;
+  customerId: string;
+  zoneId: string | null;
+  promoCode?: string;
 }
 
 class MatchConflict extends Error {}
@@ -72,6 +74,7 @@ export class MatchingService {
     private prisma: PrismaService,
     private redis: RedisService,
     private publisher: RealtimePublisher,
+    private pricing: PricingService,
   ) {}
 
   async matchOrCreateGroup(customerId: string, dto: CreateTripDto, pickupZoneId: string | null = null) {
@@ -82,8 +85,10 @@ export class MatchingService {
     const ctx: TripCtx = {
       seatsRequested,
       directDistanceMeters,
-      directFare: estimateFare(directDistanceMeters),
       durationSecs: estimateDurationSecs(directDistanceMeters),
+      customerId,
+      zoneId: pickupZoneId,
+      promoCode: dto.promoCode,
     };
 
     for (let attempt = 0; attempt <= MATCH_RETRIES; attempt++) {
@@ -209,14 +214,33 @@ export class MatchingService {
   // Writes
   // ------------------------------------------------------------------
 
-  private sharedFare(ctx: TripCtx, detourExtraMeters: number) {
-    const base = Math.round(ctx.directFare * SHARED_DISCOUNT);
-    const detour = Math.round((detourExtraMeters / 1000) * PER_KM_VND);
-    return base + detour;
+  /** Shared fare = discounted direct fare + the detour this rider imposes, via the zone's rule (surge, promo included). */
+  private priceShared(ctx: TripCtx, detourExtraMeters: number): Promise<PriceResult> {
+    return this.pricing.priceForBooking({
+      distanceMeters: ctx.directDistanceMeters,
+      durationSecs: ctx.durationSecs,
+      tripType: 'SHARED',
+      zoneId: ctx.zoneId,
+      detourMeters: detourExtraMeters,
+      promoCode: ctx.promoCode,
+      customerId: ctx.customerId,
+    });
+  }
+
+  private fareFields(price: PriceResult) {
+    const promo = price.promo && price.promo.valid ? price.promo : null;
+    return {
+      fare: price.total,
+      surgeMultiplier: price.surgeMultiplier,
+      discountAmount: price.discount,
+      promoCode: promo?.code ?? null,
+      fareBreakdown: { ...price.breakdown, ruleId: price.ruleId, ruleName: price.ruleName, subtotal: price.subtotal, discount: price.discount, total: price.total },
+      promoId: promo?.id ?? null,
+    };
   }
 
   private async joinGroup(customerId: string, dto: CreateTripDto, ctx: TripCtx, best: Candidate, pickupZoneId: string | null) {
-    const fare = this.sharedFare(ctx, best.detourExtraMeters);
+    const { promoId, ...fareFields } = this.fareFields(await this.priceShared(ctx, best.detourExtraMeters));
     const hasDriver = !!best.driverId;
 
     const trip = await this.prisma.$transaction(async (tx) => {
@@ -252,9 +276,10 @@ export class MatchingService {
           dropoffLng: dto.dropoffLng,
           distanceMeters: ctx.directDistanceMeters,
           durationSecs: ctx.durationSecs,
-          fare,
+          ...fareFields,
         },
       });
+      if (promoId) await this.pricing.redeem(tx, promoId, customerId, created.id, fareFields.discountAmount);
 
       // Replace only the stops still ahead of the vehicle.
       await tx.tripStop.deleteMany({
@@ -292,7 +317,7 @@ export class MatchingService {
   }
 
   private async createNewGroup(customerId: string, dto: CreateTripDto, ctx: TripCtx, pickupZoneId: string | null) {
-    const fare = this.sharedFare(ctx, 0);
+    const { promoId, ...fareFields } = this.fareFields(await this.priceShared(ctx, 0));
 
     const trip = await this.prisma.$transaction(async (tx) => {
       const group = await tx.tripGroup.create({
@@ -322,9 +347,10 @@ export class MatchingService {
           dropoffLng: dto.dropoffLng,
           distanceMeters: ctx.directDistanceMeters,
           durationSecs: ctx.durationSecs,
-          fare,
+          ...fareFields,
         },
       });
+      if (promoId) await this.pricing.redeem(tx, promoId, customerId, created.id, fareFields.discountAmount);
 
       await tx.tripStop.createMany({
         data: [

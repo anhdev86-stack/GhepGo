@@ -6,8 +6,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev:api": "pnpm --filter @ghepgo/api start:dev",
-    "dev:web": "pnpm --filter @ghepgo/web dev",
+    "dev:api": "pnpm --filter api start:dev",
+    "dev:web": "pnpm --filter web dev",
+    "demo:seed": "pnpm --filter api demo:seed",
+    "demo:drivers": "pnpm --filter api demo:drivers",
     "build": "pnpm -r build"
   },
   "packageManager": "pnpm@11.25.0"

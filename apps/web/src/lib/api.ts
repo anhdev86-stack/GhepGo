@@ -113,10 +113,14 @@ export const api = {
       tripType: "PRIVATE" | "SHARED";
       seatsRequested?: number;
       paymentMethod?: "CASH" | "WALLET";
+      promoCode?: string;
     },
   ) => request<any>("/trips", { method: "POST", token, body }),
 
-  myTrips: (token: string) => request<any[]>("/trips/mine", { token }),
+  myTrips: (token: string, q: { scope?: "all" | "active" | "history"; take?: number; cursor?: string } = {}) => {
+    const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString();
+    return request<any[]>(`/trips/mine${qs ? `?${qs}` : ""}`, { token });
+  },
 
   availableTrips: (token: string) => request<any[]>("/trips/available", { token }),
 
@@ -230,6 +234,22 @@ export const api = {
     id: string,
     body: { status: "IN_REVIEW" | "RESOLVED" | "REJECTED"; resolution?: string; refundAmount?: number; chargeDriver?: boolean },
   ) => request<any>(`/admin/complaints/${id}`, { method: "PATCH", token, body }),
+
+  // ---- pricing & promotions ----
+  pricingQuote: (token: string, from: { lat: number; lng: number }, to: { lat: number; lng: number }, tripType: "PRIVATE" | "SHARED", promoCode?: string) =>
+    request<any>(
+      `/pricing/quote?fromLat=${from.lat}&fromLng=${from.lng}&toLat=${to.lat}&toLng=${to.lng}&tripType=${tripType}${promoCode ? `&promoCode=${encodeURIComponent(promoCode)}` : ""}`,
+      { token },
+    ),
+  pricingRules: (token: string) => request<{ defaults: any; rules: any[] }>("/admin/pricing/rules", { token }),
+  createPricingRule: (token: string, body: Record<string, unknown>) => request<any>("/admin/pricing/rules", { method: "POST", token, body }),
+  updatePricingRule: (token: string, id: string, body: Record<string, unknown>) => request<any>(`/admin/pricing/rules/${id}`, { method: "PATCH", token, body }),
+  deletePricingRule: (token: string, id: string) => request(`/admin/pricing/rules/${id}`, { method: "DELETE", token }),
+  pricingSurge: (token: string) => request<any[]>("/admin/pricing/surge", { token }),
+  promotions: (token: string) => request<any[]>("/admin/promotions", { token }),
+  createPromotion: (token: string, body: Record<string, unknown>) => request<any>("/admin/promotions", { method: "POST", token, body }),
+  updatePromotion: (token: string, id: string, body: Record<string, unknown>) => request<any>(`/admin/promotions/${id}`, { method: "PATCH", token, body }),
+  promotionRedemptions: (token: string, id: string) => request<any[]>(`/admin/promotions/${id}/redemptions`, { token }),
 
   // ---- demand forecast ----
   forecastProfile: (token: string, zoneId?: string, weeks = 8) =>

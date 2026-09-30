@@ -6,6 +6,7 @@ import { RedisService } from '../redis/redis.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { MatchingService } from '../matching/matching.service.js';
+import { PricingService } from '../pricing/pricing.service.js';
 
 /**
  * Dispatch housekeeping:
@@ -32,6 +33,7 @@ export class DispatchService {
     private publisher: RealtimePublisher,
     private notifications: NotificationsService,
     private matching: MatchingService,
+    private pricing: PricingService,
     config: ConfigService,
   ) {
     this.requestTtlMin = Number(config.get('TRIP_REQUEST_TTL_MIN') ?? 10);
@@ -61,6 +63,7 @@ export class DispatchService {
         data: { status: 'CANCELLED', cancelledAt: now },
       });
       if (r.count !== 1) continue;
+      await this.pricing.releaseRedemption(t.id);
       this.publisher.publish({ type: 'trip.updated', tripId: t.id, customerId: t.customerId, status: 'CANCELLED', reason: 'expired' });
       await this.notifications.sendToUser(t.customerId, {
         title: 'Chưa tìm được tài xế',
@@ -79,6 +82,7 @@ export class DispatchService {
       if (r.count !== 1) continue;
       await this.prisma.trip.updateMany({ where: { groupId: g.id, status: { notIn: ['CANCELLED'] } }, data: { status: 'CANCELLED', cancelledAt: now } });
       for (const t of g.trips) {
+        await this.pricing.releaseRedemption(t.id);
         this.publisher.publish({ type: 'trip.updated', tripId: t.id, customerId: t.customerId, status: 'CANCELLED', groupId: g.id, reason: 'expired' });
         await this.notifications.sendToUser(t.customerId, {
           title: 'Chưa tìm được tài xế cho xe ghép',

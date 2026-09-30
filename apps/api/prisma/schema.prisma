@@ -118,6 +118,11 @@ enum ComplaintStatus {
   REJECTED
 }
 
+enum PromotionType {
+  PERCENT
+  FIXED
+}
+
 enum ComplaintPriority {
   LOW
   NORMAL
@@ -146,6 +151,7 @@ model User {
   complaintsAgainst  Complaint[]        @relation("ComplaintAgainst")
   complaintsAssigned Complaint[]        @relation("ComplaintAssignee")
   complaintMessages  ComplaintMessage[]
+  redemptions        PromotionRedemption[]
 
   @@map("users")
 }
@@ -221,6 +227,11 @@ model Trip {
   /** Encoded polyline5 of the road route (null when the provider fell back to a straight line). */
   routePolyline  String?
   fare           Decimal    @default(0) @db.Decimal(10, 2)
+  // Pricing snapshot: what the fare was made of at booking time.
+  surgeMultiplier Float    @default(1)
+  discountAmount  Int      @default(0)
+  promoCode       String?
+  fareBreakdown   Json?
 
   requestedAt    DateTime   @default(now())
   acceptedAt     DateTime?
@@ -236,9 +247,11 @@ model Trip {
   stops      TripStop[]
   rating     Rating?
   complaints Complaint[]
+  redemption PromotionRedemption?
 
   @@index([status])
   @@index([customerId])
+  @@index([customerId, requestedAt])
   @@index([driverId])
   @@index([groupId])
   @@index([pickupZoneId, status])
@@ -363,8 +376,78 @@ model ServiceZone {
   drivers Driver[]
   trips   Trip[]      @relation("TripPickupZone")
   groups  TripGroup[] @relation("GroupZone")
+  pricing PricingRule?
 
   @@map("service_zones")
+}
+
+// -------------------- Pricing & promotions --------------------
+
+/// Fare table. One optional row per zone; the row with zoneId = null is the global default.
+model PricingRule {
+  id                String       @id @default(cuid())
+  name              String
+  zoneId            String?      @unique
+  zone              ServiceZone? @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+  baseFare          Int          @default(15000)
+  perKm             Int          @default(11000)
+  perMinute         Int          @default(0)
+  minFare           Int          @default(20000)
+  /// Rounding unit for the final fare (VND).
+  roundTo           Int          @default(500)
+  sharedDiscountPct Int          @default(25)
+  nightSurchargePct Int          @default(0)
+  nightStartHour    Int          @default(22)
+  nightEndHour      Int          @default(5)
+  surgeEnabled      Boolean      @default(true)
+  surgeMax          Float        @default(2)
+  /// Charged to the customer when they cancel after a driver accepted (0 = free).
+  cancellationFee   Int          @default(0)
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@map("pricing_rules")
+}
+
+model Promotion {
+  id            String        @id @default(cuid())
+  code          String        @unique
+  description   String?
+  type          PromotionType
+  /// PERCENT: 0–100; FIXED: VND.
+  value         Int
+  maxDiscount   Int?
+  minFare       Int           @default(0)
+  tripType      TripType?
+  firstRideOnly Boolean       @default(false)
+  startsAt      DateTime?
+  endsAt        DateTime?
+  usageLimit    Int?
+  perUserLimit  Int           @default(1)
+  usedCount     Int           @default(0)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  redemptions PromotionRedemption[]
+
+  @@map("promotions")
+}
+
+model PromotionRedemption {
+  id          String    @id @default(cuid())
+  promotionId String
+  promotion   Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tripId      String    @unique
+  trip        Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  amount      Int
+  createdAt   DateTime  @default(now())
+
+  @@index([promotionId, userId])
+  @@map("promotion_redemptions")
 }
 
 model DriverShift {

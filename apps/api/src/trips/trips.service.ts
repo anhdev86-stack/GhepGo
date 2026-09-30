@@ -1,13 +1,17 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { TripStatus } from '../../generated/prisma/index.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateTripDto } from './dto/create-trip.dto.js';
 import { UpdateTripStatusDto } from './dto/update-trip-status.dto.js';
-import { estimateFare } from '../common/geo.util.js';
 import { MatchingService } from '../matching/matching.service.js';
 import { RealtimePublisher } from '../realtime/realtime.publisher.js';
 import { GeoService } from '../geo/geo.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
 import { ZonesService } from '../zones/zones.service.js';
+import { PricingService } from '../pricing/pricing.service.js';
+
+/** Trip states a customer still follows live (everything else is history). */
+const ACTIVE_STATUSES: TripStatus[] = ['REQUESTED', 'ASSIGNED', 'ACCEPTED', 'EN_ROUTE_TO_PICKUP', 'IN_PROGRESS'];
 
 const NEXT_STATUS: Record<string, string[]> = {
   ACCEPTED: ['EN_ROUTE_TO_PICKUP', 'CANCELLED'],
@@ -26,6 +30,7 @@ export class TripsService {
     private geo: GeoService,
     private wallet: WalletService,
     private zones: ZonesService,
+    private pricing: PricingService,
   ) {}
 
   async create(customerId: string, dto: CreateTripDto) {
@@ -47,25 +52,42 @@ export class TripsService {
     ]);
     const distanceMeters = route.distanceMeters;
     const durationSecs = route.durationSecs;
-    const fare = estimateFare(distanceMeters);
+    // Same engine as GET /pricing/quote: rule per zone, live surge, promo (400 when the code cannot apply).
+    const price = await this.pricing.priceForBooking({
+      distanceMeters,
+      durationSecs,
+      tripType: 'PRIVATE',
+      zoneId: pickupZoneId,
+      promoCode: dto.promoCode,
+      customerId,
+    });
+    const promo = price.promo && price.promo.valid ? price.promo : null;
 
-    const trip = await this.prisma.trip.create({
-      data: {
-        customerId,
-        tripType: dto.tripType,
-        paymentMethod: dto.paymentMethod ?? 'CASH',
-        pickupZoneId,
-        pickupAddress: dto.pickupAddress,
-        pickupLat: dto.pickupLat,
-        pickupLng: dto.pickupLng,
-        dropoffAddress: dto.dropoffAddress,
-        dropoffLat: dto.dropoffLat,
-        dropoffLng: dto.dropoffLng,
-        distanceMeters,
-        durationSecs,
-        routePolyline: route.polyline ?? null,
-        fare,
-      },
+    const trip = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.trip.create({
+        data: {
+          customerId,
+          tripType: dto.tripType,
+          paymentMethod: dto.paymentMethod ?? 'CASH',
+          pickupZoneId,
+          pickupAddress: dto.pickupAddress,
+          pickupLat: dto.pickupLat,
+          pickupLng: dto.pickupLng,
+          dropoffAddress: dto.dropoffAddress,
+          dropoffLat: dto.dropoffLat,
+          dropoffLng: dto.dropoffLng,
+          distanceMeters,
+          durationSecs,
+          routePolyline: route.polyline ?? null,
+          fare: price.total,
+          surgeMultiplier: price.surgeMultiplier,
+          discountAmount: price.discount,
+          promoCode: promo?.code ?? null,
+          fareBreakdown: { ...price.breakdown, ruleId: price.ruleId, ruleName: price.ruleName, subtotal: price.subtotal, discount: price.discount, total: price.total },
+        },
+      });
+      if (promo) await this.pricing.redeem(tx, promo.id, customerId, created.id, price.discount);
+      return created;
     });
 
     this.publisher.publish({
@@ -84,10 +106,24 @@ export class TripsService {
     return trip;
   }
 
-  async findMine(customerId: string) {
+  /**
+   * Customer trips, newest first. `scope` splits live trips from history so the history can be paged
+   * with `take` + `cursor` (id of the last trip already shown) without ever hiding a live trip.
+   */
+  async findMine(customerId: string, q: { scope?: 'all' | 'active' | 'history'; take?: number; cursor?: string } = {}) {
+    const scope = q.scope ?? 'all';
+    const take = Math.min(100, q.take ?? 50);
+    const statusFilter =
+      scope === 'active' ? { status: { in: ACTIVE_STATUSES } } : scope === 'history' ? { status: { notIn: ACTIVE_STATUSES } } : {};
+    if (q.cursor) {
+      const anchor = await this.prisma.trip.findFirst({ where: { id: q.cursor, customerId }, select: { id: true } });
+      if (!anchor) throw new BadRequestException('Con trỏ phân trang không hợp lệ');
+    }
     return this.prisma.trip.findMany({
-      where: { customerId },
-      orderBy: { requestedAt: 'desc' },
+      where: { customerId, ...statusFilter },
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+      take,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       include: {
         driver: { include: { user: true } },
         vehicle: true,
@@ -241,6 +277,15 @@ export class TripsService {
       await this.matchingService.removeTripFromGroup(tripId);
     } else if (trip.driver) {
       await this.prisma.driver.update({ where: { id: trip.driver.id }, data: { status: 'AVAILABLE' } });
+    }
+
+    // A promo goes back to the pool; a late cancel (driver already on the way) may cost the rule's fee.
+    await this.pricing.releaseRedemption(tripId);
+    if (trip.driver && ['ACCEPTED', 'EN_ROUTE_TO_PICKUP'].includes(trip.status)) {
+      const rule = await this.pricing.ruleFor(trip.pickupZoneId);
+      if (rule.cancellationFee > 0) {
+        await this.wallet.chargeCancellationFee(customerId, trip.driver.userId, tripId, rule.cancellationFee);
+      }
     }
 
     this.publisher.publish({

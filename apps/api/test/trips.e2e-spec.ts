@@ -90,4 +90,34 @@ describe('Trips, matching, realtime (e2e)', () => {
     const expired = await t.call('get', `/trips/${p.id}`, { token: c.token });
     expect(expired.status).toBe('CANCELLED');
   });
+  it('pages the customer history with scope/take/cursor and always returns live trips', async () => {
+    const c = await t.register('CUSTOMER', 'Pager');
+    const other = await t.register('CUSTOMER', 'Other');
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const trip = await t.call('post', '/trips', { token: c.token, body: tripBody(HCM.benThanh, HCM.tanDinh) });
+      await t.call('post', `/trips/${trip.id}/cancel`, { token: c.token });
+      ids.unshift(trip.id); // newest first
+      await sleep(5);
+    }
+    const live = await t.call('post', '/trips', { token: c.token, body: tripBody(HCM.nhaTho, HCM.tanDinh) });
+
+    const active = await t.call('get', '/trips/mine?scope=active', { token: c.token });
+    expect(active.map((x: any) => x.id)).toEqual([live.id]);
+
+    const p1 = await t.call('get', '/trips/mine?scope=history&take=2', { token: c.token });
+    expect(p1.map((x: any) => x.id)).toEqual(ids.slice(0, 2));
+    const p2 = await t.call('get', `/trips/mine?scope=history&take=2&cursor=${p1[1].id}`, { token: c.token });
+    expect(p2.map((x: any) => x.id)).toEqual(ids.slice(2));
+
+    // No params keeps the old shape: all trips, newest first (capped at 50).
+    const all = await t.call('get', '/trips/mine', { token: c.token });
+    expect(all.map((x: any) => x.id)).toEqual([live.id, ...ids]);
+
+    // Another customer's trip id is not a valid cursor; bad params are rejected.
+    await expectStatus(t.call('get', `/trips/mine?scope=history&cursor=${p1[0].id}`, { token: other.token }), 400);
+    await expectStatus(t.call('get', '/trips/mine?take=0', { token: c.token }), 400);
+    await expectStatus(t.call('get', '/trips/mine?scope=nope', { token: c.token }), 400);
+    await t.call('post', `/trips/${live.id}/cancel`, { token: c.token });
+  });
 });
