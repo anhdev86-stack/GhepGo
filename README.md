@@ -78,7 +78,7 @@ API chạy tại `http://localhost:3001/api`.
 - **Drivers**: `PATCH /drivers/me/status` (AVAILABLE/OFFLINE), `PATCH /drivers/me/location`
   (fallback HTTP cho GPS), `GET /drivers/nearby?lat&lng&radius` (tài xế đang trực quanh một điểm,
   Redis GEO), `GET /drivers` (admin, kèm vị trí live).
-- **Trips**: `POST /trips` (đặt xe, tự tính khoảng cách/giá bằng công thức Haversine),
+- **Trips**: `POST /trips` (đặt xe; quãng đường từ routing, giá từ bảng giá khu vực + cao điểm + `promoCode`),
   `GET /trips/mine`, `GET /trips/available`, `GET /trips/driver/mine`,
   `POST /trips/:id/accept` (atomic — 2 tài xế bấm cùng lúc chỉ 1 người nhận được),
   `PATCH /trips/:id/status`, `POST /trips/:id/cancel` (khách huỷ trước khi được đón),
@@ -137,6 +137,25 @@ Toàn bộ response tự động loại bỏ field `passwordHash` qua `StripSens
 - API: `GET /zones` (đang hoạt động), `GET /zones/coverage?lat&lng` (điểm có được phục vụ không),
   admin `POST/PATCH/DELETE /admin/zones[/:id]` (không xoá khi còn tài xế), `GET /admin/reports/zones?from&to`.
   Web: màn đặt xe báo vùng phục vụ và chặn nút đặt; bảng tài xế hiển thị khu vực; `/admin/reports` quản lý và thống kê theo khu vực.
+
+### Bảng giá, giờ cao điểm & khuyến mãi (`src/pricing`)
+
+- **Bảng giá** (`pricing_rules`): một dòng mặc định (zoneId null) và tuỳ chọn một dòng riêng cho mỗi khu vực; chưa có dòng nào thì
+  dùng hằng số hệ thống (mở cửa 15.000, 11.000/km, tối thiểu 20.000, xe ghép giảm 25%). Công thức theo thứ tự trên hoá đơn:
+  mở cửa + km + phút → phụ thu đêm % (khung giờ cấu hình, có thể qua nửa đêm) → hệ số giờ cao điểm → giảm xe ghép (+ phụ phí
+  đi vòng theo km) → giá tối thiểu → khuyến mãi → làm tròn (`roundTo`). `pricing.util.ts` thuần, có unit test.
+- **Giờ cao điểm** tính trực tiếp từ cung–cầu trong khu vực: yêu cầu đang chờ (bao xe REQUESTED + nhóm MATCHING) so với tài xế
+  đang trực; tỷ lệ ≤ 0,5 là ×1, mỗi đơn vị tỷ lệ tăng thêm ×0,2 (bước 0,1) tới `surgeMax`; không có tài xế thì ×tối đa. Cache 60 s.
+  Hệ số và từng khoản được lưu vào chuyến (`surgeMultiplier`, `fareBreakdown`).
+- **Khuyến mãi** (`promotions`): PERCENT/FIXED, giảm tối đa, đơn tối thiểu, loại chuyến, chỉ chuyến đầu, thời gian, tổng lượt và
+  lượt/khách; `POST /trips {promoCode}` từ chối 400 khi không áp dụng được, lượt dùng ghi trong cùng transaction tạo chuyến
+  (`promotion_redemptions`), huỷ hoặc hết hạn chuyến trả lại lượt. **Phí huỷ muộn**: khách huỷ sau khi tài xế đã nhận bị trừ
+  `cancellationFee` vào ví (được phép âm), tài xế nhận phần còn lại sau hoa hồng.
+- API: `GET /pricing/quote?fromLat&fromLng&toLat&toLng&tripType&promoCode` (tuyến + chi tiết giá + cao điểm + kiểm tra mã, cùng
+  engine với đặt xe), `GET /pricing/rules/current?lat&lng`; admin `GET/POST/PATCH/DELETE /admin/pricing/rules[/:id]`,
+  `GET /admin/pricing/surge`, `GET/POST/PATCH /admin/promotions[/:id]`, `GET /admin/promotions/:id/redemptions`.
+- Web: `/book` báo giá từ quote (huy hiệu cao điểm/đêm/xe ghép, ô nhập mã, chi tiết giá); `/admin/pricing` quản lý bảng giá theo
+  khu vực, xem hệ số cao điểm hiện tại, tạo/tắt mã và xem lượt dùng.
 
 ### Dự báo nhu cầu (`src/forecast`)
 
@@ -302,7 +321,7 @@ khi app không ở foreground (mở app thì socket đảm nhiệm để tránh 
 
 ```bash
 cd apps/api
-pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, điểm tuyến geo, SLA, dự báo, health
+pnpm test          # unit (vitest): tối ưu tuyến, khu vực, chữ ký VNPay/MoMo, chuẩn hoá SĐT, điểm tuyến geo, SLA, dự báo, giá cước, health
 pnpm test:e2e      # e2e (vitest + supertest + socket.io-client) trên Postgres + Redis thật: 17 kịch bản
 pnpm build
 ```
@@ -311,7 +330,7 @@ E2E (`apps/api/test/*.e2e-spec.ts`) khởi động toàn bộ AppModule trên c�
 OTP/đăng ký/refresh/logout/khoá đăng nhập, ghép nhóm + ghép động + huỷ + race nhận chuyến + sự kiện socket,
 ví/hoa hồng/fallback tiền mặt/rút tiền/IPN VNPay và MoMo, khu vực (tròn + đa giác), khiếu nại + hoàn tiền,
 push device, đánh giá, KPI, hết hạn chuyến, cấu hình bản đồ/tuyến nhiều điểm/reverse geocode, SLA khiếu nại
-(tự phân công, đổi người xử lý/ưu tiên, quét quá hạn, báo cáo SLA), dự báo nhu cầu (profile, 24 giờ tới, điểm nóng). Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
+(tự phân công, đổi người xử lý/ưu tiên, quét quá hạn, báo cáo SLA), dự báo nhu cầu (profile, 24 giờ tới, điểm nóng), bảng giá + mã khuyến mãi + phí huỷ muộn. Cấu hình test trong `test/setup.ts` (tắt throttler, provider bản đồ
 không mạng). CI chạy cả unit lẫn e2e.
 
 ## CI/CD và triển khai

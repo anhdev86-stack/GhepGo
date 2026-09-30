@@ -22,6 +22,7 @@ const LINKS: Record<string, { href: string; label: string }[]> = {
   ADMIN: [
     { href: "/admin", label: "Đội xe" },
     { href: "/admin/forecast", label: "Dự báo" },
+    { href: "/admin/pricing", label: "Giá & KM" },
     { href: "/admin/reports", label: "Báo cáo" },
     { href: "/admin/complaints", label: "Khiếu nại" },
   ],

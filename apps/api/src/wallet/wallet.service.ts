@@ -424,6 +424,19 @@ export class WalletService {
     });
   }
 
+  /**
+   * Late-cancellation fee: charged to the customer's wallet (may go negative,
+   * collected from the next top-up) and paid to the driver net of commission.
+   */
+  async chargeCancellationFee(customerId: string, driverUserId: string, tripId: string, fee: number) {
+    const commission = Math.round(fee * this.commissionRate);
+    await this.prisma.$transaction(async (tx) => {
+      await this.post(tx, customerId, { type: 'ADJUSTMENT', amount: -fee, tripId, description: 'Phí huỷ chuyến sau khi tài xế đã nhận', allowNegative: true });
+      await this.post(tx, driverUserId, { type: 'ADJUSTMENT', amount: fee - commission, tripId, description: 'Bồi hoàn huỷ chuyến (đã trừ phí nền tảng)', allowNegative: true });
+    });
+    return { fee, driverPayout: fee - commission };
+  }
+
   /** Driver confirms cash received (payment PENDING → PAID). */
   async confirmCash(driverUserId: string, tripId: string) {
     const trip = await this.prisma.trip.findUnique({

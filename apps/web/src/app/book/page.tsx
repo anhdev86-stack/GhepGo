@@ -3,14 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
-import { api, ApiError, type RouteResult } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { AddressInput, type Place } from "@/components/address-input";
 import { MapView, type MapMarker, type MapPolygon, type MapCircle } from "@/components/map-view";
 import { coordLabel, routePath, useMapTiles, type LatLng } from "@/lib/map";
-import { Alert, Button, Card, Field, Icon, LinkButton, Segmented, Select } from "@/components/ui";
+import { Alert, Button, Card, Field, Icon, Input, LinkButton, Segmented, Select } from "@/components/ui";
 
-const BASE_FARE = 15000;
-const PER_KM = 11000;
 const vnd = (n: number) => n.toLocaleString("vi-VN") + " đ";
 
 type PickTarget = "pickup" | "dropoff" | null;
@@ -30,7 +28,10 @@ export default function BookPage() {
   const [loading, setLoading] = useState(false);
   const [nearby, setNearby] = useState<any[] | null>(null);
   const [wallet, setWallet] = useState<any | null>(null);
-  const [preview, setPreview] = useState<RouteResult | null>(null);
+  const [quote, setQuote] = useState<any | null>(null);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoCode, setPromoCode] = useState("");
+  const [showBreakdown, setShowBreakdown] = useState(false);
   const [coverage, setCoverage] = useState<{ served: boolean; zone: { name: string } | null; zonesConfigured: number } | null>(null);
   const [zones, setZones] = useState<any[]>([]);
   const [picking, setPicking] = useState<PickTarget>(null);
@@ -42,16 +43,19 @@ export default function BookPage() {
     api.publicZones(token).then(setZones).catch(() => setZones([]));
   }, [token]);
 
-  // Live drivers around the pickup (Redis GEO) + road route preview.
+  // Live drivers around the pickup (Redis GEO) + one quote call: road route, fare breakdown, surge, promo check.
   useEffect(() => {
     if (!token) return;
     const t = setTimeout(() => {
       api.nearbyDrivers(token, pickup.lat, pickup.lng, 5000).then(setNearby).catch(() => setNearby(null));
       api.zoneCoverage(token, pickup.lat, pickup.lng).then(setCoverage).catch(() => setCoverage(null));
-      api.route(token, pickup, dropoff).then(setPreview).catch(() => setPreview(null));
+      api.pricingQuote(token, pickup, dropoff, tripType, promoCode || undefined)
+        .then((q) => setQuote(q && typeof q.total === "number" ? q : null))
+        .catch(() => setQuote(null));
     }, 500);
     return () => clearTimeout(t);
-  }, [token, pickup.lat, pickup.lng, dropoff.lat, dropoff.lng]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [token, pickup.lat, pickup.lng, dropoff.lat, dropoff.lng, tripType, promoCode]); // eslint-disable-line react-hooks/exhaustive-deps
+  const preview = quote?.route ?? null;
 
   /** Map tap / marker drag → coordinates now, address from reverse geocoding when it answers. */
   const placeFromMap = useCallback(
@@ -111,8 +115,8 @@ export default function BookPage() {
     return null;
   }
 
-  const estFare = preview ? Math.round(BASE_FARE + (preview.distanceMeters / 1000) * PER_KM) : null;
-  const shownFare = estFare && tripType === "SHARED" ? Math.round(estFare * 0.75) : estFare;
+  const shownFare: number | null = quote ? quote.total : null;
+  const promoValid = !!quote?.promo?.valid;
   const outOfArea = coverage ? !coverage.served : false;
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -132,6 +136,7 @@ export default function BookPage() {
         tripType,
         paymentMethod,
         ...(tripType === "SHARED" ? { seatsRequested } : {}),
+        ...(promoValid ? { promoCode: quote.promo.code } : {}),
       });
       setSuccess(trip);
     } catch (err) {
@@ -164,6 +169,7 @@ export default function BookPage() {
             <div className="rounded-xl bg-ink-50 p-3">
               <dt className="text-xs text-ink-500">Giá cước</dt>
               <dd className="font-semibold text-brand-700">{vnd(Number(success.fare))}</dd>
+              {success.discountAmount > 0 && <dd className="text-[11px] text-emerald-700">đã giảm {vnd(success.discountAmount)} ({success.promoCode})</dd>}
             </div>
             <div className="rounded-xl bg-ink-50 p-3">
               <dt className="text-xs text-ink-500">Thanh toán</dt>
@@ -256,15 +262,47 @@ export default function BookPage() {
             </Alert>
           )}
 
+          {/* Promo code */}
+          <Field label="Mã khuyến mãi">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Nhập mã (nếu có)"
+                value={promoInput}
+                onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    setPromoCode(promoInput.trim());
+                  }
+                }}
+                className="uppercase"
+              />
+              {promoCode && promoCode === promoInput.trim() ? (
+                <Button type="button" variant="secondary" onClick={() => { setPromoCode(""); setPromoInput(""); }}>
+                  Bỏ mã
+                </Button>
+              ) : (
+                <Button type="button" variant="soft" disabled={!promoInput.trim()} onClick={() => setPromoCode(promoInput.trim())}>
+                  Áp dụng
+                </Button>
+              )}
+            </div>
+            {quote?.promo && (
+              <p className={`mt-1 text-xs ${quote.promo.valid ? "text-emerald-700" : "text-red-600"}`}>
+                {quote.promo.valid ? `Áp dụng ${quote.promo.code}: giảm ${vnd(quote.discount)}${quote.promo.description ? ` · ${quote.promo.description}` : ""}` : `${quote.promo.code}: ${quote.promo.reason}`}
+              </p>
+            )}
+          </Field>
+
           {/* Price summary */}
           <div className="rounded-2xl bg-ink-900 text-white p-4">
-            {preview ? (
+            {quote ? (
               <>
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <p className="text-[11px] uppercase tracking-wider text-white/60">Giá dự kiến</p>
-                    <p className="text-3xl font-bold leading-tight">{shownFare != null ? vnd(shownFare) : "…"}</p>
-                    {tripType === "SHARED" && estFare && <p className="text-xs text-white/50 line-through">{vnd(estFare)} bao xe</p>}
+                    <p className="text-3xl font-bold leading-tight">{vnd(quote.total)}</p>
+                    {quote.discount > 0 && <p className="text-xs text-white/50 line-through">{vnd(quote.subtotal)}</p>}
                   </div>
                   <div className="text-right text-sm text-white/80">
                     <p className="flex items-center justify-end gap-1.5">
@@ -276,8 +314,62 @@ export default function BookPage() {
                     </p>
                   </div>
                 </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                  {quote.surgeMultiplier > 1 && <span className="rounded-full bg-amber-400/20 text-amber-200 px-2 py-0.5 font-semibold">Giờ cao điểm ×{quote.surgeMultiplier}</span>}
+                  {quote.breakdown.nightSurcharge > 0 && <span className="rounded-full bg-indigo-400/20 text-indigo-200 px-2 py-0.5">Phụ thu đêm</span>}
+                  {tripType === "SHARED" && <span className="rounded-full bg-white/10 text-white/80 px-2 py-0.5">Xe ghép −{Math.round((quote.breakdown.sharedDiscount / Math.max(1, quote.breakdown.sharedDiscount + quote.subtotal - quote.breakdown.detourFare - quote.breakdown.minFareTopUp)) * 100)}%</span>}
+                  {quote.discount > 0 && <span className="rounded-full bg-emerald-400/20 text-emerald-200 px-2 py-0.5">Giảm {vnd(quote.discount)}</span>}
+                  <button type="button" onClick={() => setShowBreakdown((v) => !v)} className="ml-auto text-white/60 hover:text-white underline underline-offset-2">
+                    {showBreakdown ? "Ẩn chi tiết" : "Chi tiết giá"}
+                  </button>
+                </div>
+                {showBreakdown && (
+                  <dl className="mt-2 grid grid-cols-[1fr_auto] gap-y-0.5 text-[11px] text-white/80 border-t border-white/10 pt-2">
+                    <dt>Giá mở cửa</dt>
+                    <dd className="text-right tabular-nums">{vnd(quote.breakdown.baseFare)}</dd>
+                    <dt>Quãng đường</dt>
+                    <dd className="text-right tabular-nums">{vnd(quote.breakdown.distanceFare)}</dd>
+                    {quote.breakdown.timeFare > 0 && (
+                      <>
+                        <dt>Thời gian</dt>
+                        <dd className="text-right tabular-nums">{vnd(quote.breakdown.timeFare)}</dd>
+                      </>
+                    )}
+                    {quote.breakdown.nightSurcharge > 0 && (
+                      <>
+                        <dt>Phụ thu đêm</dt>
+                        <dd className="text-right tabular-nums">+{vnd(quote.breakdown.nightSurcharge)}</dd>
+                      </>
+                    )}
+                    {quote.breakdown.surgeAmount > 0 && (
+                      <>
+                        <dt>Giờ cao điểm ×{quote.surgeMultiplier}</dt>
+                        <dd className="text-right tabular-nums">+{vnd(quote.breakdown.surgeAmount)}</dd>
+                      </>
+                    )}
+                    {quote.breakdown.sharedDiscount > 0 && (
+                      <>
+                        <dt>Giảm xe ghép</dt>
+                        <dd className="text-right tabular-nums">−{vnd(quote.breakdown.sharedDiscount)}</dd>
+                      </>
+                    )}
+                    {quote.breakdown.minFareTopUp > 0 && (
+                      <>
+                        <dt>Giá tối thiểu</dt>
+                        <dd className="text-right tabular-nums">+{vnd(quote.breakdown.minFareTopUp)}</dd>
+                      </>
+                    )}
+                    {quote.discount > 0 && (
+                      <>
+                        <dt>Khuyến mãi {quote.promo?.code}</dt>
+                        <dd className="text-right tabular-nums">−{vnd(quote.discount)}</dd>
+                      </>
+                    )}
+                    <dt className="text-white/50 col-span-2 pt-1">Bảng giá: {quote.ruleName}{quote.zone ? ` · ${quote.zone.name}` : ""}</dt>
+                  </dl>
+                )}
                 {preview.estimated && <p className="mt-2 text-[11px] text-amber-300">Ước lượng theo đường chim bay, dịch vụ bản đồ chưa phản hồi.</p>}
-                {tripType === "SHARED" && <p className="mt-2 text-[11px] text-white/60">Đã giảm 25%; cộng phụ phí nhỏ nếu xe phải đi vòng vì bạn.</p>}
+                {tripType === "SHARED" && quote.detourNote && <p className="mt-2 text-[11px] text-white/60">{quote.detourNote}.</p>}
               </>
             ) : (
               <p className="text-sm text-white/70">Đang tính giá…</p>

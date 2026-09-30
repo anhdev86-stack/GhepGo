@@ -145,7 +145,11 @@ export default function TripsPage() {
                             {st.label}
                           </Badge>
                           <p className="mt-2 text-lg font-semibold text-ink-900">{vnd(trip.fare)}</p>
-                          <p className="text-xs text-ink-500">{trip.tripType === "SHARED" ? "Xe ghép" : "Bao xe"} · {trip.paymentMethod === "WALLET" ? "ví GhepGo" : "tiền mặt"}</p>
+                          <p className="text-xs text-ink-500">
+                            {trip.tripType === "SHARED" ? "Xe ghép" : "Bao xe"} · {trip.paymentMethod === "WALLET" ? "ví GhepGo" : "tiền mặt"}
+                            {trip.surgeMultiplier > 1 ? ` · cao điểm ×${trip.surgeMultiplier}` : ""}
+                            {trip.discountAmount > 0 ? ` · giảm ${vnd(trip.discountAmount)} (${trip.promoCode})` : ""}
+                          </p>
                         </div>
                         {CANCELLABLE.includes(trip.status) && (
                           <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50" onClick={() => cancel(trip.id)}>

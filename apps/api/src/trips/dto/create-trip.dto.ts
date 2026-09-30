@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsEnum, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsEnum, IsInt, IsLatitude, IsLongitude, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 
 export enum TripTypeDto {
   PRIVATE = 'PRIVATE',
@@ -45,4 +45,10 @@ export class CreateTripDto {
   @IsOptional()
   @IsEnum(PaymentMethodDto)
   paymentMethod?: PaymentMethodDto;
+
+  /** Promotion code; booking fails with 400 when it cannot be applied. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  promoCode?: string;
 }
