@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
@@ -7,6 +7,7 @@ import type { AuthUser } from '../auth/decorators/current-user.decorator.js';
 import { TripsService } from './trips.service.js';
 import { CreateTripDto } from './dto/create-trip.dto.js';
 import { UpdateTripStatusDto } from './dto/update-trip-status.dto.js';
+import { MyTripsQueryDto } from './dto/my-trips-query.dto.js';
 
 @Controller('trips')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -21,8 +22,8 @@ export class TripsController {
 
   @Get('mine')
   @Roles('CUSTOMER')
-  findMine(@CurrentUser() user: AuthUser) {
-    return this.tripsService.findMine(user.userId);
+  findMine(@CurrentUser() user: AuthUser, @Query() q: MyTripsQueryDto) {
+    return this.tripsService.findMine(user.userId, q);
   }
 
   @Get('available')

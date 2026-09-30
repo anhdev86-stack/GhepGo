@@ -116,6 +116,11 @@ export default function BookPage() {
   }
 
   const shownFare: number | null = quote ? quote.total : null;
+  // Every line is rounded on its own and the total to the rule's unit; show the difference so the lines add up.
+  const rounding = quote
+    ? quote.total -
+      (quote.breakdown.baseFare + quote.breakdown.distanceFare + quote.breakdown.timeFare + quote.breakdown.nightSurcharge + quote.breakdown.surgeAmount - quote.breakdown.sharedDiscount + quote.breakdown.detourFare + quote.breakdown.minFareTopUp - quote.discount)
+    : 0;
   const promoValid = !!quote?.promo?.valid;
   const outOfArea = coverage ? !coverage.served : false;
 
@@ -359,12 +364,29 @@ export default function BookPage() {
                         <dd className="text-right tabular-nums">+{vnd(quote.breakdown.minFareTopUp)}</dd>
                       </>
                     )}
+                    {quote.breakdown.detourFare > 0 && (
+                      <>
+                        <dt>Phụ phí đi vòng</dt>
+                        <dd className="text-right tabular-nums">+{vnd(quote.breakdown.detourFare)}</dd>
+                      </>
+                    )}
                     {quote.discount > 0 && (
                       <>
                         <dt>Khuyến mãi {quote.promo?.code}</dt>
                         <dd className="text-right tabular-nums">−{vnd(quote.discount)}</dd>
                       </>
                     )}
+                    {rounding !== 0 && (
+                      <>
+                        <dt>Làm tròn</dt>
+                        <dd className="text-right tabular-nums">
+                          {rounding > 0 ? "+" : "−"}
+                          {vnd(Math.abs(rounding))}
+                        </dd>
+                      </>
+                    )}
+                    <dt className="font-semibold text-white border-t border-white/10 pt-1 mt-0.5">Tổng</dt>
+                    <dd className="text-right tabular-nums font-semibold text-white border-t border-white/10 pt-1 mt-0.5">{vnd(quote.total)}</dd>
                     <dt className="text-white/50 col-span-2 pt-1">Bảng giá: {quote.ruleName}{quote.zone ? ` · ${quote.zone.name}` : ""}</dt>
                   </dl>
                 )}

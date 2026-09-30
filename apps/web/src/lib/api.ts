@@ -117,7 +117,10 @@ export const api = {
     },
   ) => request<any>("/trips", { method: "POST", token, body }),
 
-  myTrips: (token: string) => request<any[]>("/trips/mine", { token }),
+  myTrips: (token: string, q: { scope?: "all" | "active" | "history"; take?: number; cursor?: string } = {}) => {
+    const qs = new URLSearchParams(Object.entries(q).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)])).toString();
+    return request<any[]>(`/trips/mine${qs ? `?${qs}` : ""}`, { token });
+  },
 
   availableTrips: (token: string) => request<any[]>("/trips/available", { token }),
 

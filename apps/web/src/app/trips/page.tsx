@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/auth-context";
 import { api, ApiError } from "@/lib/api";
@@ -18,9 +18,11 @@ const STATUS: Record<string, { label: string; tone: Tone }> = {
   CANCELLED: { label: "Đã huỷ", tone: "slate" },
 };
 
+/** History page size; the live trips are always loaded in full. */
+const PAGE = 20;
+
 const STEPS = ["REQUESTED", "ACCEPTED", "EN_ROUTE_TO_PICKUP", "IN_PROGRESS", "COMPLETED"];
 const STEP_LABEL = ["Đặt xe", "Đã nhận", "Đang tới", "Trên xe", "Hoàn thành"];
-const ACTIVE = ["REQUESTED", "ASSIGNED", "ACCEPTED", "EN_ROUTE_TO_PICKUP", "IN_PROGRESS"];
 const CANCELLABLE = ["REQUESTED", "ASSIGNED", "ACCEPTED", "EN_ROUTE_TO_PICKUP"];
 const vnd = (n: unknown) => Number(n).toLocaleString("vi-VN") + " đ";
 
@@ -55,14 +57,47 @@ export default function TripsPage() {
   const router = useRouter();
   const { socket, connected } = useRealtime(token);
   const now = useNow();
-  const [trips, setTrips] = useState<any[] | null>(null);
+  const [liveTrips, setLiveTrips] = useState<any[] | null>(null);
+  const [history, setHistory] = useState<any[] | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const historyLoaded = useRef(false);
   const [locations, setLocations] = useState<Record<string, DriverLocation>>({});
   const [error, setError] = useState<string | null>(null);
 
+  // Refresh = live trips + the newest history page, merged in front of any older pages already loaded.
   const load = useCallback(() => {
     if (!token) return;
-    api.myTrips(token).then(setTrips).catch(() => {});
+    Promise.all([api.myTrips(token, { scope: "active", take: 100 }), api.myTrips(token, { scope: "history", take: PAGE })])
+      .then(([live, first]) => {
+        setLiveTrips(live);
+        if (!historyLoaded.current) {
+          historyLoaded.current = true;
+          setHasMore(first.length === PAGE);
+        }
+        const ids = new Set(first.map((t) => t.id));
+        setHistory((prev) => (prev ? first.concat(prev.filter((t) => !ids.has(t.id))) : first));
+      })
+      .catch(() => {});
   }, [token]);
+
+  const loadMore = async () => {
+    if (!token || !history?.length) return;
+    setLoadingMore(true);
+    try {
+      const page = await api.myTrips(token, { scope: "history", take: PAGE, cursor: history[history.length - 1].id });
+      setHistory((prev) => {
+        const ids = new Set((prev ?? []).map((t) => t.id));
+        return [...(prev ?? []), ...page.filter((t) => !ids.has(t.id))];
+      });
+      setHasMore(page.length === PAGE);
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Không tải thêm được lịch sử");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+  const trips = liveTrips && history ? [...liveTrips, ...history] : null;
 
   useEffect(() => {
     load();
@@ -72,11 +107,9 @@ export default function TripsPage() {
 
   // Join the room of every active trip so we receive its driver's GPS.
   useEffect(() => {
-    if (!socket || !trips) return;
-    for (const t of trips) {
-      if (ACTIVE.includes(t.status)) socket.emit(WS.SUBSCRIBE_TRIP, { tripId: t.id });
-    }
-  }, [socket, trips]);
+    if (!socket || !liveTrips) return;
+    for (const t of liveTrips) socket.emit(WS.SUBSCRIBE_TRIP, { tripId: t.id });
+  }, [socket, liveTrips]);
 
   useSocketEvent(socket, WS.TRIP_UPDATED, load);
   useSocketEvent(socket, WS.GROUP_UPDATED, load);
@@ -111,8 +144,8 @@ export default function TripsPage() {
     }
   };
 
-  const active = (trips ?? []).filter((t) => ACTIVE.includes(t.status));
-  const past = (trips ?? []).filter((t) => !ACTIVE.includes(t.status));
+  const active = liveTrips ?? [];
+  const past = history ?? [];
 
   return (
     <div>
@@ -234,8 +267,14 @@ export default function TripsPage() {
                       {trip.pickupAddress} <span className="text-ink-400">→</span> {trip.dropoffAddress}
                     </p>
                     <p className="text-xs text-ink-500 mt-0.5">
-                      {trip.driver?.user?.fullName ? `${trip.driver.user.fullName} · ` : ""}
-                      {trip.payment ? `${trip.payment.method === "WALLET" ? "ví" : "tiền mặt"} · ${trip.payment.status === "PAID" ? "đã thanh toán" : "chờ xác nhận"}` : ""}
+                      {[
+                        trip.driver?.user?.fullName,
+                        (trip.payment?.method ?? trip.paymentMethod) === "WALLET" ? "ví" : "tiền mặt",
+                        trip.payment ? (trip.payment.status === "PAID" ? "đã thanh toán" : "chờ xác nhận") : null,
+                        trip.discountAmount > 0 ? `giảm ${vnd(trip.discountAmount)}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 sm:flex-col sm:items-end">
@@ -264,6 +303,14 @@ export default function TripsPage() {
               );
             })}
           </Card>
+          {hasMore && (
+            <div className="mt-4 flex justify-center">
+              <Button variant="secondary" loading={loadingMore} onClick={loadMore}>
+                Xem thêm chuyến cũ hơn
+              </Button>
+            </div>
+          )}
+          {!hasMore && past.length > PAGE && <p className="mt-4 text-center text-xs text-ink-400">Đã hiển thị toàn bộ {past.length} chuyến</p>}
         </section>
       )}
     </div>

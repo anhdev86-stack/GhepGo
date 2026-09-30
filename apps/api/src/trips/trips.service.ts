@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import type { TripStatus } from '../../generated/prisma/index.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateTripDto } from './dto/create-trip.dto.js';
 import { UpdateTripStatusDto } from './dto/update-trip-status.dto.js';
@@ -8,6 +9,9 @@ import { GeoService } from '../geo/geo.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
 import { ZonesService } from '../zones/zones.service.js';
 import { PricingService } from '../pricing/pricing.service.js';
+
+/** Trip states a customer still follows live (everything else is history). */
+const ACTIVE_STATUSES: TripStatus[] = ['REQUESTED', 'ASSIGNED', 'ACCEPTED', 'EN_ROUTE_TO_PICKUP', 'IN_PROGRESS'];
 
 const NEXT_STATUS: Record<string, string[]> = {
   ACCEPTED: ['EN_ROUTE_TO_PICKUP', 'CANCELLED'],
@@ -102,10 +106,24 @@ export class TripsService {
     return trip;
   }
 
-  async findMine(customerId: string) {
+  /**
+   * Customer trips, newest first. `scope` splits live trips from history so the history can be paged
+   * with `take` + `cursor` (id of the last trip already shown) without ever hiding a live trip.
+   */
+  async findMine(customerId: string, q: { scope?: 'all' | 'active' | 'history'; take?: number; cursor?: string } = {}) {
+    const scope = q.scope ?? 'all';
+    const take = Math.min(100, q.take ?? 50);
+    const statusFilter =
+      scope === 'active' ? { status: { in: ACTIVE_STATUSES } } : scope === 'history' ? { status: { notIn: ACTIVE_STATUSES } } : {};
+    if (q.cursor) {
+      const anchor = await this.prisma.trip.findFirst({ where: { id: q.cursor, customerId }, select: { id: true } });
+      if (!anchor) throw new BadRequestException('Con trỏ phân trang không hợp lệ');
+    }
     return this.prisma.trip.findMany({
-      where: { customerId },
-      orderBy: { requestedAt: 'desc' },
+      where: { customerId, ...statusFilter },
+      orderBy: [{ requestedAt: 'desc' }, { id: 'desc' }],
+      take,
+      ...(q.cursor ? { cursor: { id: q.cursor }, skip: 1 } : {}),
       include: {
         driver: { include: { user: true } },
         vehicle: true,

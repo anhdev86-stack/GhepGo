@@ -79,6 +79,8 @@ API chạy tại `http://localhost:3001/api`.
   (fallback HTTP cho GPS), `GET /drivers/nearby?lat&lng&radius` (tài xế đang trực quanh một điểm,
   Redis GEO), `GET /drivers` (admin, kèm vị trí live).
 - **Trips**: `POST /trips` (đặt xe; quãng đường từ routing, giá từ bảng giá khu vực + cao điểm + `promoCode`),
+  `GET /trips/mine?scope=all|active|history&take=1..100&cursor=<id>` (mới nhất trước, mặc định 50; web tải chuyến đang chạy
+  đầy đủ và lịch sử 20 chuyến mỗi trang),
   `GET /trips/mine`, `GET /trips/available`, `GET /trips/driver/mine`,
   `POST /trips/:id/accept` (atomic — 2 tài xế bấm cùng lúc chỉ 1 người nhận được),
   `PATCH /trips/:id/status`, `POST /trips/:id/cancel` (khách huỷ trước khi được đón),
@@ -307,6 +309,40 @@ màn `earnings` (số dư, KPI, rút tiền, lịch sử).
 khi app không ở foreground (mở app thì socket đảm nhiệm để tránh gửi trùng); tắt trực thì dừng. Cần quyền
 "Luôn cho phép"; app hiển thị trạng thái GPS nền và lý do nếu thiếu quyền. Yêu cầu **development build**
 (`npx expo run:android` / `run:ios` hoặc EAS) — Expo Go không hỗ trợ background location.
+
+## Chạy thử trên máy với dữ liệu demo
+
+Cần Node.js ≥ 20, pnpm và Docker Desktop. Từ thư mục gốc repo:
+
+```bash
+pnpm install
+docker compose up -d                      # PostgreSQL/PostGIS :5434 + Redis :6379
+cp apps/api/.env.example apps/api/.env
+pnpm --filter api exec prisma generate
+pnpm --filter api exec prisma migrate deploy
+pnpm demo:seed                            # một lần, trên database trống
+
+# 3 terminal riêng:
+pnpm dev:api                              # http://localhost:3001/api
+pnpm dev:web                              # http://localhost:3000
+pnpm demo:drivers                         # giữ 5 tài xế demo "đang trực" (GPS mỗi phút), Ctrl+C để dừng
+```
+
+`demo:seed` chạy qua chính các service của API (bảng giá, khuyến mãi, vòng đời chuyến, khiếu nại) nên số liệu giống
+khi dùng thật: 12 khách, 5 tài xế có xe, khu vực TP.HCM + Quận 1 (đa giác), bảng giá mặc định và bảng riêng Quận 1,
+mã `HELLO20` / `GHEPXE15` / `SANBAY`, 8 chuyến hoàn thành, 1 chuyến đang chạy, 6 yêu cầu đang chờ (tạo giá giờ cao điểm),
+2 khiếu nại và ~2.600 chuyến lịch sử 4 tuần có giờ cao điểm cho trang dự báo và báo cáo. Chạy lại khi đã có dữ liệu
+thì lệnh bỏ qua; muốn làm lại từ đầu: `docker compose down -v` rồi chạy lại các bước trên.
+
+| Vai trò | Số điện thoại | Mật khẩu | Nên xem |
+|---|---|---|---|
+| Admin | `0900000001` | `demo1234` | `/admin`, `/admin/pricing`, `/admin/forecast`, `/admin/complaints`, `/admin/reports` |
+| Khách | `0900000002` | `demo1234` | `/trips` (có chuyến đang chạy, lịch sử dài để thử "Xem thêm") |
+| Khách | `0900000004` | `demo1234` | `/book` với mã `HELLO20` |
+| Tài xế | `0900000021` | `demo1234` | `/driver` (đang chạy chuyến, có yêu cầu chờ nhận) |
+
+Tài xế chỉ được tính "đang trực" trong 2 phút sau lần gửi GPS cuối, nên nếu không chạy `demo:drivers` thì trang đặt xe
+sẽ báo chưa có tài xế gần. Lệnh demo từ chối chạy khi `NODE_ENV=production`.
 
 ## Luồng demo end-to-end
 

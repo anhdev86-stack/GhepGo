@@ -251,6 +251,7 @@ model Trip {
 
   @@index([status])
   @@index([customerId])
+  @@index([customerId, requestedAt])
   @@index([driverId])
   @@index([groupId])
   @@index([pickupZoneId, status])
