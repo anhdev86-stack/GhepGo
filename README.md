@@ -312,20 +312,26 @@ khi app không ở foreground (mở app thì socket đảm nhiệm để tránh 
 
 ## Chạy thử trên máy với dữ liệu demo
 
-Cần Node.js ≥ 20, pnpm và Docker Desktop. Từ thư mục gốc repo:
+Cần Node.js ≥ 20, pnpm (`corepack enable`) và Docker Desktop đang mở. Từ thư mục gốc repo:
 
 ```bash
 pnpm install
-docker compose up -d                      # PostgreSQL/PostGIS :5434 + Redis :6379
+pnpm demo
+```
+
+`pnpm demo` tự làm hết: bật PostgreSQL/PostGIS + Redis bằng `docker compose` nếu chưa chạy, tạo `apps/api/.env` từ
+`.env.example`, `prisma generate` + `migrate deploy`, tạo dữ liệu demo (lần đầu), rồi chạy API (:3001), web (:3000) và GPS
+của tài xế demo cùng lúc và mở trình duyệt tại http://localhost:3000. Ctrl+C dừng tất cả. Muốn chạy từng phần:
+
+```bash
+docker compose up -d
 cp apps/api/.env.example apps/api/.env
 pnpm --filter api exec prisma generate
 pnpm --filter api exec prisma migrate deploy
 pnpm demo:seed                            # một lần, trên database trống
-
-# 3 terminal riêng:
 pnpm dev:api                              # http://localhost:3001/api
 pnpm dev:web                              # http://localhost:3000
-pnpm demo:drivers                         # giữ 5 tài xế demo "đang trực" (GPS mỗi phút), Ctrl+C để dừng
+pnpm demo:drivers                         # giữ 5 tài xế demo "đang trực" (GPS mỗi phút)
 ```
 
 `demo:seed` chạy qua chính các service của API (bảng giá, khuyến mãi, vòng đời chuyến, khiếu nại) nên số liệu giống
@@ -341,7 +347,7 @@ thì lệnh bỏ qua; muốn làm lại từ đầu: `docker compose down -v` r�
 | Khách | `0900000004` | `demo1234` | `/book` với mã `HELLO20` |
 | Tài xế | `0900000021` | `demo1234` | `/driver` (đang chạy chuyến, có yêu cầu chờ nhận) |
 
-Tài xế chỉ được tính "đang trực" trong 2 phút sau lần gửi GPS cuối, nên nếu không chạy `demo:drivers` thì trang đặt xe
+Tài xế chỉ được tính "đang trực" trong 2 phút sau lần gửi GPS cuối; `pnpm demo` tự giữ họ online, còn khi chạy từng phần mà không chạy `demo:drivers` thì trang đặt xe
 sẽ báo chưa có tài xế gần. Lệnh demo từ chối chạy khi `NODE_ENV=production`.
 
 ## Luồng demo end-to-end

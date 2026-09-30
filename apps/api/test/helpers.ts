@@ -8,6 +8,21 @@ import { PrismaService } from '../src/prisma/prisma.service.js';
 import { StripSensitiveInterceptor } from '../src/common/strip-sensitive.interceptor.js';
 import { ZonesService } from '../src/zones/zones.service.js';
 
+/**
+ * A fresh Vietnamese mobile number for this test process. Purely random (not derived from the clock) and never
+ * handed out twice, so two sign-ups in one run cannot share a number and trip the 60 s OTP resend lock.
+ */
+const issuedPhones = new Set<string>();
+export function uniquePhone(): string {
+  for (;;) {
+    const phone = `09${Math.floor(Math.random() * 100_000_000).toString().padStart(8, '0')}`;
+    if (!issuedPhones.has(phone)) {
+      issuedPhones.add(phone);
+      return phone;
+    }
+  }
+}
+
 export interface Session {
   token: string;
   refreshToken: string;
@@ -60,7 +75,9 @@ export class TestApp {
 
   /** Full OTP registration flow. */
   async register(role: 'CUSTOMER' | 'DRIVER', fullName: string = role): Promise<Session> {
-    const phone = `09${(Date.now() + Math.floor(Math.random() * 1_000_000)).toString().slice(-8)}`;
+    // Also skip numbers an earlier spec file already registered (users are stored in local 0xxxxxxxxx form).
+    let phone = uniquePhone();
+    while (await this.prisma.user.findUnique({ where: { phone } })) phone = uniquePhone();
     const sent = await this.call('post', '/auth/otp/send', { body: { phone, purpose: 'REGISTER' } });
     const ver = await this.call('post', '/auth/otp/verify', { body: { phone, purpose: 'REGISTER', code: sent.devCode } });
     const auth = await this.call('post', '/auth/register', {

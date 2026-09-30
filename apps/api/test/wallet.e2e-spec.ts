@@ -128,10 +128,13 @@ describe('Wallet, settlement, gateways (e2e)', () => {
       expect(shared.breakdown.sharedDiscount).toBe(Math.round(q.subtotal * 0.25));
 
       // Promotion: 20% up to 10k, once per user.
-      const promo = await t.call('post', '/admin/promotions', { token: admin.token, body: { code: 'hello20', type: 'PERCENT', value: 20, maxDiscount: 10000, perUserLimit: 1 } });
-      expect(promo.code).toBe('HELLO20');
-      await expectStatus(t.call('post', '/admin/promotions', { token: admin.token, body: { code: 'HELLO20', type: 'PERCENT', value: 5 } }), 400);
-      const qp = await t.call('get', `/pricing/quote?promoCode=hello20&fromLat=${HCM.benThanh.lat}&fromLng=${HCM.benThanh.lng}&toLat=${HCM.tanDinh.lat}&toLng=${HCM.tanDinh.lng}`, { token: c.token });
+      // Per-run code so the spec also passes against a database kept from an earlier run.
+      const code = `HELLO${Date.now().toString(36).toUpperCase()}`;
+      const lower = code.toLowerCase();
+      const promo = await t.call('post', '/admin/promotions', { token: admin.token, body: { code: lower, type: 'PERCENT', value: 20, maxDiscount: 10000, perUserLimit: 1 } });
+      expect(promo.code).toBe(code);
+      await expectStatus(t.call('post', '/admin/promotions', { token: admin.token, body: { code, type: 'PERCENT', value: 5 } }), 400);
+      const qp = await t.call('get', `/pricing/quote?promoCode=${lower}&fromLat=${HCM.benThanh.lat}&fromLng=${HCM.benThanh.lng}&toLat=${HCM.tanDinh.lat}&toLng=${HCM.tanDinh.lng}`, { token: c.token });
       const discount = Math.min(10000, Math.round(q.subtotal * 0.2));
       expect(qp.promo.valid).toBe(true);
       expect(qp.discount).toBe(discount);
@@ -140,12 +143,12 @@ describe('Wallet, settlement, gateways (e2e)', () => {
       expect(bad.promo.valid).toBe(false);
 
       // Booking applies the same numbers and records the redemption; a second use is refused.
-      const trip = await t.call('post', '/trips', { token: c.token, body: { ...tripBody(HCM.benThanh, HCM.tanDinh), promoCode: 'hello20' } });
-      expect(trip.promoCode).toBe('HELLO20');
+      const trip = await t.call('post', '/trips', { token: c.token, body: { ...tripBody(HCM.benThanh, HCM.tanDinh), promoCode: lower } });
+      expect(trip.promoCode).toBe(code);
       expect(trip.discountAmount).toBe(discount);
       expect(Number(trip.fare)).toBe(qp.total);
       expect(trip.fareBreakdown.ruleName).toBe('E2E');
-      await expectStatus(t.call('post', '/trips', { token: c.token, body: { ...tripBody(HCM.benThanh, HCM.tanDinh), promoCode: 'HELLO20' } }), 400, 'khuyến mãi');
+      await expectStatus(t.call('post', '/trips', { token: c.token, body: { ...tripBody(HCM.benThanh, HCM.tanDinh), promoCode: code } }), 400, 'khuyến mãi');
       await expectStatus(t.call('post', '/trips', { token: c.token, body: { ...tripBody(HCM.benThanh, HCM.tanDinh), promoCode: 'NOPE' } }), 400);
       expect(await t.call('get', `/admin/promotions/${promo.id}/redemptions`, { token: admin.token })).toHaveLength(1);
       expect((await t.call('get', '/admin/promotions', { token: admin.token })).find((p: any) => p.id === promo.id).usedCount).toBe(1);
