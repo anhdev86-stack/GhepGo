@@ -68,6 +68,9 @@ describe('Zones, complaints, notifications, reports (e2e)', () => {
     const mine = await t.call('get', `/admin/complaints?assignee=${cp.assignee.id}&status=ACTIVE`, { token: admin.token });
     expect(mine.some((x: any) => x.id === cp.id)).toBe(true);
     await expectStatus(t.call('patch', `/admin/complaints/${cp.id}/assign`, { token: admin.token, body: { assigneeId: c.user.id } }), 400);
+    // Hand the case to a colleague (they are told), then take it back (assigning to yourself sends nothing).
+    const admin2 = await t.admin();
+    expect((await t.call('patch', `/admin/complaints/${cp.id}/assign`, { token: admin.token, body: { assigneeId: admin2.user.id } })).assignee.id).toBe(admin2.user.id);
     const reassigned = await t.call('patch', `/admin/complaints/${cp.id}/assign`, { token: admin.token, body: { assigneeId: admin.user.id } });
     expect(reassigned.assignee.id).toBe(admin.user.id);
     const urgent = await t.call('patch', `/admin/complaints/${cp.id}/priority`, { token: admin.token, body: { priority: 'URGENT' } });
@@ -101,7 +104,8 @@ describe('Zones, complaints, notifications, reports (e2e)', () => {
     await sleep(300);
     const adminTitles = (await t.call('get', '/notifications', { token: admin.token })).map((n: any) => n.title);
     expect(adminTitles.some((x: string) => x.startsWith('Quá hạn SLA'))).toBe(true);
-    expect(adminTitles.some((x: string) => x.startsWith('Bạn được phân công'))).toBe(true);
+    const admin2Titles = (await t.call('get', '/notifications', { token: admin2.token })).map((n: any) => n.title);
+    expect(admin2Titles.some((x: string) => x.startsWith('Bạn được phân công'))).toBe(true);
     const titles = (await t.call('get', '/notifications', { token: c.token })).map((n: any) => n.title);
     expect(titles.some((x: string) => x.includes('Khiếu nại đã giải quyết'))).toBe(true);
     expect(titles).toContain('Chuyến đi hoàn thành');
